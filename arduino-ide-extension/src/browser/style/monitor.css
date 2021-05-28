@@ -9,6 +9,21 @@
     flex-direction: column;
 }
 
+.serial-monitor .content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.serial-monitor .editor-container {
+    height: 100%;
+}
+
+.serial-monitor .monaco-editor .margin {
+    border-right: none;
+    background-color: red;  /* var(--theia-editor-background); */
+}
+
 .serial-monitor .head {
     display: flex;
     padding: 5px;

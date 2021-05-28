@@ -163,6 +163,12 @@ import { NotificationManager } from './theia/messages/notifications-manager';
 import { NotificationManager as TheiaNotificationManager } from '@theia/messages/lib/browser/notifications-manager';
 import { NotificationsRenderer as TheiaNotificationsRenderer } from '@theia/messages/lib/browser/notifications-renderer';
 import { NotificationsRenderer } from './theia/messages/notifications-renderer';
+import { ResourceResolver } from '@theia/core/lib/common';
+import { MonacoEditorFactory } from '@theia/monaco/lib/browser/monaco-editor-provider';
+import { MonacoEditorModelFactory } from '@theia/monaco/lib/browser/monaco-text-model-service';
+import { MonitorResourceProvider } from './monitor/monitor-resource-provider';
+import { MonitorEditorFactory } from './monitor/monitor-editor-factory';
+import { MonitorEditorModelFactory } from './monitor/monitor-editor-model-factory';
 
 const ElementQueries = require('css-element-queries/src/ElementQueries');
 
@@ -274,6 +280,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
         WebSocketConnectionProvider.createProxy(context.container, MonitorServicePath, client);
         return client;
     }).inSingletonScope();
+    bind(MonitorResourceProvider).toSelf().inSingletonScope();
+    bind(ResourceResolver).toService(MonitorResourceProvider);
+    bind(MonacoEditorFactory).to(MonitorEditorFactory).inSingletonScope();
+    bind(MonacoEditorModelFactory).to(MonitorEditorModelFactory).inSingletonScope();
 
     bind(WorkspaceService).toSelf().inSingletonScope();
     rebind(TheiaWorkspaceService).toService(WorkspaceService);
