@@ -4,7 +4,6 @@ const fs = require('fs');
 const zip = require('7zip-min');
 const temp = require('temp');
 const path = require('path');
-const shell = require('shelljs');
 const depcheck = require('depcheck');
 const fromFile = require('file-type').fromFile;
 
@@ -152,20 +151,7 @@ const isNightly = process.env.IS_NIGHTLY === 'true';
 const isRelease = process.env.IS_RELEASE === 'true';
 
 function git(command) {
-    try {
-        const gitPath = shell.which('git');
-        const error = shell.error();
-        if (error) {
-            throw new Error(error);
-        }
-        const { stderr, stdout } = shell.exec(`"${gitPath}" ${command}`, { silent: true });
-        if (stderr) {
-            throw new Error(stderr.toString().trim());
-        }
-        return stdout.toString().trim();
-    } catch (e) {
-        throw e;
-    }
+    return require('child_process').execSync(`git ${command}`).toString().trim();
 }
 
 module.exports = { collectUnusedDependencies, adjustArchiveStructure, isZip, unpack, isNightly, isRelease, isElectronPublish, git };

@@ -217,9 +217,11 @@ ${fs.readFileSync(path('..', 'build', 'package.json')).toString()}
         if (toEcho) {
             echo(`⏱️  >>> ${toEcho}...`);
         }
-        const { code, stderr, stdout } = shell.exec(command);
-        if (code !== 0) {
-            echo(`🔥  Error when executing ${command} => ${stderr}`);
+        let stdout;
+        try {
+            stdout = require('child_process').execSync(command).toString().trim;
+        } catch (e) {
+            echo(`🔥  Error when executing ${command} => ${e}`);
             shell.exit(1);
         }
         if (toEcho) {
