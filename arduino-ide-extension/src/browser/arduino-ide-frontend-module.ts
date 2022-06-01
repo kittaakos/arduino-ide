@@ -277,6 +277,10 @@ import {
 import { ElectronIpcConnectionProvider } from '@theia/core/lib/electron-browser/messaging/electron-ipc-connection-provider';
 import { EditorManager as TheiaEditorManager } from '@theia/editor/lib/browser/editor-manager';
 import { EditorManager } from './theia/editor/editor-manager';
+import { Formatter, FormatterPath } from '../common/protocol/formatter';
+import { Format } from './contributions/format';
+import { MonacoFormattingConflictsContribution } from './theia/monaco/monaco-formatting-conflicts';
+import { MonacoFormattingConflictsContribution as TheiaMonacoFormattingConflictsContribution } from '@theia/monaco/lib/browser/monaco-formatting-conflicts';
 
 const ElementQueries = require('css-element-queries/src/ElementQueries');
 
@@ -563,6 +567,12 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     )
     .inSingletonScope();
 
+  bind(Formatter)
+    .toDynamicValue(({ container }) =>
+      WebSocketConnectionProvider.createProxy(container, FormatterPath)
+    )
+    .inSingletonScope();
+
   bind(ArduinoFirmwareUploader)
     .toDynamicValue((context) =>
       WebSocketConnectionProvider.createProxy(
@@ -630,6 +640,14 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   Contribution.configure(bind, ArchiveSketch);
   Contribution.configure(bind, AddZipLibrary);
   Contribution.configure(bind, PlotterFrontendContribution);
+  Contribution.configure(bind, Format);
+
+  // Disabled the quick-pick customization from Theia when multiple formatters are available.
+  // Use the default VS Code behavior, and pick the first one. In the IDE2, clang-format has `exclusive` selectors.
+  bind(MonacoFormattingConflictsContribution).toSelf().inSingletonScope();
+  rebind(TheiaMonacoFormattingConflictsContribution).toService(
+    MonacoFormattingConflictsContribution
+  );
 
   bind(ResponseServiceImpl)
     .toSelf()
