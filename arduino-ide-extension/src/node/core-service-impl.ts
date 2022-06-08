@@ -131,10 +131,6 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     );
   }
 
-  isUploading(): Promise<boolean> {
-    return Promise.resolve(this.uploading);
-  }
-
   protected async doUpload(
     options: CoreService.Upload.Options,
     requestProvider: () => UploadRequest | UploadUsingProgrammerRequest,
