@@ -65,9 +65,6 @@ export interface CoreService {
 export namespace CoreService {
   export namespace Compile {
     export interface Options {
-      /**
-       * `file` URI to the sketch folder.
-       */
       readonly sketch: Sketch;
       readonly board?: Board;
       readonly optimizeForDebug: boolean;

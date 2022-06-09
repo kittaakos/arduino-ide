@@ -68,7 +68,7 @@ export function tryParse(raw: string): ParseResult | undefined {
     return undefined;
   }
   const [, path, rawLine, rawColumn, errorPrefix, , error] = matches.map(
-    (match) => match.trim()
+    (match) => (match ? match.trim() : match)
   );
   const line = Number.parseInt(rawLine, 10);
   if (!Number.isInteger(line)) {
