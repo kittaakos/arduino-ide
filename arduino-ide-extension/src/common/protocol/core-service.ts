@@ -1,9 +1,9 @@
-import { Location } from '@theia/core/shared/vscode-languageserver-protocol';
 import { ApplicationError } from '@theia/core';
 import { BoardUserField } from '.';
 import { Board, Port } from '../../common/protocol/boards-service';
 import { Programmer } from './boards-service';
 import { Sketch } from './sketches-service';
+import { ErrorInfo } from '../../node/cli-error-parser';
 
 export const CompilerWarningLiterals = [
   'None',
@@ -13,10 +13,7 @@ export const CompilerWarningLiterals = [
 ] as const;
 export type CompilerWarnings = typeof CompilerWarningLiterals[number];
 export namespace CoreError {
-  export interface Info {
-    readonly message: string;
-    readonly location?: Location;
-  }
+  export type Info = ErrorInfo;
   export const Codes = {
     Verify: 4001,
     Upload: 4002,

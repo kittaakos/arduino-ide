@@ -75,7 +75,12 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     return new Promise<void>((resolve, reject) => {
       response.on('data', onDataHandler);
       response.on('error', (error) =>
-        reject(CoreError.VerifyFailed(error, tryParseError(stderr, sketch)))
+        reject(
+          CoreError.VerifyFailed(
+            error,
+            tryParseError({ content: stderr, sketch })
+          )
+        )
       );
       response.on('end', () => resolve());
     });
@@ -149,11 +154,11 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     });
 
     const response = responseHandler(client, req);
-    const { stderr, onDataHandler } = this.createOnDataHandler();
+    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
     return new Promise<void>((resolve, reject) => {
       response.on('data', onDataHandler);
       response.on('error', (error) =>
-        reject(errorHandler(error, tryParseError(stderr, sketch)))
+        reject(errorHandler(error, tryParseError({ content: stderr, sketch })))
       );
       response.on('end', () => resolve());
     });
@@ -189,7 +194,12 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     return new Promise<void>((resolve, reject) => {
       result.on('data', onDataHandler);
       result.on('error', (error) =>
-        reject(CoreError.BurnBootloaderFailed(error, tryParseError(stderr)))
+        reject(
+          CoreError.BurnBootloaderFailed(
+            error,
+            tryParseError({ content: stderr })
+          )
+        )
       );
       result.on('end', resolve);
     }).finally(async () => {
@@ -236,12 +246,6 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
         req.getSourceOverrideMap().set(relativePath, content);
       }
     }
-  }
-
-  private flushOutputPanelMessages(chunk: string): void {
-    this.responseService.appendToOutput({
-      chunk,
-    });
   }
 }
 /**
