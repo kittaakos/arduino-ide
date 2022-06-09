@@ -48,6 +48,8 @@ import {
   ConfigService,
   FileSystemExt,
   Sketch,
+  CoreService,
+  CoreError,
 } from '../../common/protocol';
 import { ArduinoPreferences } from '../arduino-preferences';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
@@ -161,6 +163,51 @@ export abstract class SketchContribution extends Contribution {
       }
     }
     return override;
+  }
+}
+
+@injectable()
+export class CoreServiceContribution extends SketchContribution {
+  @inject(CoreService)
+  protected readonly coreService: CoreService;
+
+  /**
+   * The returning promise resolves when the error was handled. Rejects if the error could not be handled.
+   */
+  protected handleError(error: unknown): void {
+    this.tryRevealErrorLocation(error);
+    this.tryToastErrorMessage(error);
+  }
+
+  private tryRevealErrorLocation(error: unknown): void {
+    if (CoreError.is(error)) {
+      const {
+        data: { location },
+      } = error;
+      if (location) {
+        console.log('location', location);
+      }
+    }
+  }
+
+  private tryToastErrorMessage(error: unknown): void {
+    let message: undefined | string = undefined;
+    if (CoreError.is(error)) {
+      message = error.message;
+    } else if (error instanceof Error) {
+      message = error.message;
+    } else if (typeof error === 'string') {
+      message = error;
+    } else {
+      try {
+        message = JSON.stringify(error);
+      } catch {}
+    }
+    if (message) {
+      this.messageService.error(message);
+    } else {
+      throw error;
+    }
   }
 }
 

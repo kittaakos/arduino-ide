@@ -1,11 +1,10 @@
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { OutputChannelManager } from '@theia/output/lib/browser/output-channel';
-import { CoreService } from '../../common/protocol';
 import { ArduinoMenus } from '../menu/arduino-menus';
 import { BoardsDataStore } from '../boards/boards-data-store';
 import { BoardsServiceProvider } from '../boards/boards-service-provider';
 import {
-  SketchContribution,
+  CoreServiceContribution,
   Command,
   CommandRegistry,
   MenuModelRegistry,
@@ -13,11 +12,7 @@ import {
 import { nls } from '@theia/core/lib/common';
 
 @injectable()
-export class BurnBootloader extends SketchContribution {
-  @inject(CoreService)
-  protected readonly coreService: CoreService;
-
-
+export class BurnBootloader extends CoreServiceContribution {
   @inject(BoardsDataStore)
   protected readonly boardsDataStore: BoardsDataStore;
 
@@ -62,7 +57,7 @@ export class BurnBootloader extends SketchContribution {
         ...boardsConfig.selectedBoard,
         name: boardsConfig.selectedBoard?.name || '',
         fqbn,
-      }
+      };
       this.outputChannelManager.getChannel('Arduino').clear();
       await this.coreService.burnBootloader({
         board,
@@ -81,13 +76,7 @@ export class BurnBootloader extends SketchContribution {
         }
       );
     } catch (e) {
-      let errorMessage = "";
-      if (typeof e === "string") {
-        errorMessage = e;
-      } else {
-        errorMessage = e.toString();
-      }
-      this.messageService.error(errorMessage);
+      this.handleError(e);
     }
   }
 }
