@@ -92,14 +92,14 @@ export class VerifySketch extends CoreServiceContribution {
 
     // toggle the toolbar button and menu item state.
     // verifyInProgress will be set to false whether the compilation fails or not
-    this.verifyInProgress = true;
-    this.onDidChangeEmitter.fire();
     const sketch = await this.sketchServiceClient.currentSketch();
-
     if (!CurrentSketch.isValid(sketch)) {
       return;
     }
     try {
+      this.verifyInProgress = true;
+      await this.discardEditorMarkers();
+      this.onDidChangeEmitter.fire();
       const { boardsConfig } = this.boardsServiceClientImpl;
       const [fqbn, sourceOverride] = await Promise.all([
         this.boardsDataStore.appendConfigToFqbn(

@@ -11,10 +11,14 @@ import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { MaybePromise } from '@theia/core/lib/common/types';
 import { LabelProvider } from '@theia/core/lib/browser/label-provider';
 import { EditorManager } from '@theia/editor/lib/browser/editor-manager';
+import { TextEditor } from '@theia/editor/lib/browser/editor';
+import { ApplicationShell } from '@theia/core/lib/browser/shell/application-shell';
+import type { Range } from '@theia/core/shared/vscode-languageserver-protocol';
 import { MessageService } from '@theia/core/lib/common/message-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser/workspace-service';
 import { open, OpenerService } from '@theia/core/lib/browser/opener-service';
 import { OutputChannelManager } from '@theia/output/lib/browser/output-channel';
+import { TrackedRangeStickiness } from '@theia/editor/lib/browser/decorations/editor-decoration';
 import {
   MenuModelRegistry,
   MenuContribution,
@@ -171,23 +175,87 @@ export class CoreServiceContribution extends SketchContribution {
   @inject(CoreService)
   protected readonly coreService: CoreService;
 
+  private shell: ApplicationShell | undefined;
+  /**
+   * Keys are the file URIs per editor, the values are the delta decorations to remove before creating new ones.
+   */
+  private readonly editorDecorations = new Map<string, string[]>();
+
+  override onStart(app: FrontendApplication): MaybePromise<void> {
+    this.shell = app.shell;
+  }
+
+  protected async discardEditorMarkers(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      Promise.all(
+        Array.from(this.editorDecorations.entries()).map(
+          async ([uri, decorations]) => {
+            const editor = await this.editorManager.getByUri(new URI(uri));
+            if (editor) {
+              editor.editor.deltaDecorations({
+                oldDecorations: decorations,
+                newDecorations: [],
+              });
+            }
+            this.editorDecorations.delete(uri);
+          }
+        )
+      ).then(() => resolve());
+    });
+  }
+
   /**
    * The returning promise resolves when the error was handled. Rejects if the error could not be handled.
    */
   protected handleError(error: unknown): void {
-    this.tryRevealErrorLocation(error);
+    this.tryHighlightErrorLocation(error);
     this.tryToastErrorMessage(error);
   }
 
-  private tryRevealErrorLocation(error: unknown): void {
+  private tryHighlightErrorLocation(error: unknown): void {
     if (CoreError.is(error)) {
       const {
         data: { location },
       } = error;
       if (location) {
-        console.log('location', location);
+        const { uri, line, column } = location;
+        const start = {
+          line: line - 1,
+          character: typeof column !== 'number' ? 0 : column - 1,
+        };
+        // The double editor activation logic is apparently required: https://github.com/eclipse-theia/theia/issues/11284;
+        this.editorManager
+          .getByUri(new URI(uri), { mode: 'activate', selection: { start } })
+          .then(async (editor) => {
+            if (editor && this.shell) {
+              await this.shell.activateWidget(editor.id);
+              this.markErrorLocationInEditor(editor.editor, {
+                start,
+                end: { ...start, character: 1 << 30 },
+              });
+            }
+          });
       }
     }
+  }
+
+  private markErrorLocationInEditor(editor: TextEditor, range: Range): void {
+    this.editorDecorations.set(
+      editor.uri.toString(),
+      editor.deltaDecorations({
+        oldDecorations: [],
+        newDecorations: [
+          {
+            range,
+            options: {
+              isWholeLine: true,
+              className: 'core-error',
+              stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+            },
+          },
+        ],
+      })
+    );
   }
 
   private tryToastErrorMessage(error: unknown): void {

@@ -198,16 +198,17 @@ export class UploadSketch extends CoreServiceContribution {
       return;
     }
 
-    // toggle the toolbar button and menu item state.
-    // uploadInProgress will be set to false whether the upload fails or not
-    this.uploadInProgress = true;
-    this.onDidChangeEmitter.fire();
     const sketch = await this.sketchServiceClient.currentSketch();
     if (!CurrentSketch.isValid(sketch)) {
       return;
     }
 
     try {
+      // toggle the toolbar button and menu item state.
+      // uploadInProgress will be set to false whether the upload fails or not
+      this.uploadInProgress = true;
+      await this.discardEditorMarkers();
+      this.onDidChangeEmitter.fire();
       const { boardsConfig } = this.boardsServiceClientImpl;
       const [fqbn, { selectedProgrammer }, verify, verbose, sourceOverride] =
         await Promise.all([
