@@ -26,17 +26,19 @@ export namespace CoreError {
     Codes.UploadUsingProgrammer
   );
   export const BurnBootloaderFailed = create(Codes.BurnBootloader);
-  export function is(error: unknown): error is ApplicationError<number, Info> {
+  export function is(
+    error: unknown
+  ): error is ApplicationError<number, Info[]> {
     return (
       error instanceof Error &&
       ApplicationError.is(error) &&
       Object.values(Codes).includes(error.code)
     );
   }
-  function create(code: number): ApplicationError.Constructor<number, Info> {
+  function create(code: number): ApplicationError.Constructor<number, Info[]> {
     return ApplicationError.declare(
       code,
-      ({ message, stack }: Error, data: Info) => {
+      ({ message, stack }: Error, data: Info[]) => {
         return {
           data,
           message,

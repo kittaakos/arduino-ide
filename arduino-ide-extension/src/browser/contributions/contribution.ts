@@ -57,6 +57,7 @@ import {
 } from '../../common/protocol';
 import { ArduinoPreferences } from '../arduino-preferences';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
+import { notEmpty } from '@theia/core';
 
 export {
   Command,
@@ -214,28 +215,25 @@ export class CoreServiceContribution extends SketchContribution {
 
   private tryHighlightErrorLocation(error: unknown): void {
     if (CoreError.is(error)) {
-      const {
-        data: { location },
-      } = error;
-      if (location) {
-        const { uri, line, column } = location;
-        const start = {
-          line: line - 1,
-          character: typeof column !== 'number' ? 0 : column - 1,
-        };
-        // The double editor activation logic is apparently required: https://github.com/eclipse-theia/theia/issues/11284;
-        this.editorManager
-          .getByUri(new URI(uri), { mode: 'activate', selection: { start } })
-          .then(async (editor) => {
-            if (editor && this.shell) {
-              await this.shell.activateWidget(editor.id);
-              this.markErrorLocationInEditor(editor.editor, {
-                start,
-                end: { ...start, character: 1 << 30 },
-              });
-            }
-          });
-      }
+      error.data
+        .map(({ location }) => location)
+        .filter(notEmpty)
+        .forEach((location) => {
+          const { uri, range } = location;
+          const { start, end } = range;
+          // The double editor activation logic is apparently required: https://github.com/eclipse-theia/theia/issues/11284;
+          this.editorManager
+            .getByUri(new URI(uri), { mode: 'activate', selection: range })
+            .then(async (editor) => {
+              if (editor && this.shell) {
+                await this.shell.activateWidget(editor.id);
+                this.markErrorLocationInEditor(editor.editor, {
+                  start: start,
+                  end: { ...end, character: 1 << 30 },
+                });
+              }
+            });
+        });
     }
   }
 
