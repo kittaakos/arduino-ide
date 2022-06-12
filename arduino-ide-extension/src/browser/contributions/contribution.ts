@@ -11,14 +11,11 @@ import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { MaybePromise } from '@theia/core/lib/common/types';
 import { LabelProvider } from '@theia/core/lib/browser/label-provider';
 import { EditorManager } from '@theia/editor/lib/browser/editor-manager';
-import { TextEditor } from '@theia/editor/lib/browser/editor';
-import { ApplicationShell } from '@theia/core/lib/browser/shell/application-shell';
-import type { Range } from '@theia/core/shared/vscode-languageserver-protocol';
 import { MessageService } from '@theia/core/lib/common/message-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser/workspace-service';
 import { open, OpenerService } from '@theia/core/lib/browser/opener-service';
 import { OutputChannelManager } from '@theia/output/lib/browser/output-channel';
-import { TrackedRangeStickiness } from '@theia/editor/lib/browser/decorations/editor-decoration';
+
 import {
   MenuModelRegistry,
   MenuContribution,
@@ -57,7 +54,7 @@ import {
 } from '../../common/protocol';
 import { ArduinoPreferences } from '../arduino-preferences';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
-import { notEmpty } from '@theia/core';
+import { CoreErrorHandler } from './core-error-handler';
 
 export {
   Command,
@@ -176,84 +173,12 @@ export class CoreServiceContribution extends SketchContribution {
   @inject(CoreService)
   protected readonly coreService: CoreService;
 
-  private shell: ApplicationShell | undefined;
-  /**
-   * Keys are the file URIs per editor, the values are the delta decorations to remove before creating new ones.
-   */
-  private readonly editorDecorations = new Map<string, string[]>();
+  @inject(CoreErrorHandler)
+  protected readonly coreErrorHandler: CoreErrorHandler;
 
-  override onStart(app: FrontendApplication): MaybePromise<void> {
-    this.shell = app.shell;
-  }
-
-  protected async discardEditorMarkers(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      Promise.all(
-        Array.from(this.editorDecorations.entries()).map(
-          async ([uri, decorations]) => {
-            const editor = await this.editorManager.getByUri(new URI(uri));
-            if (editor) {
-              editor.editor.deltaDecorations({
-                oldDecorations: decorations,
-                newDecorations: [],
-              });
-            }
-            this.editorDecorations.delete(uri);
-          }
-        )
-      ).then(() => resolve());
-    });
-  }
-
-  /**
-   * The returning promise resolves when the error was handled. Rejects if the error could not be handled.
-   */
   protected handleError(error: unknown): void {
-    this.tryHighlightErrorLocation(error);
+    this.coreErrorHandler.tryHandle(error);
     this.tryToastErrorMessage(error);
-  }
-
-  private tryHighlightErrorLocation(error: unknown): void {
-    if (CoreError.is(error)) {
-      error.data
-        .map(({ location }) => location)
-        .filter(notEmpty)
-        .forEach((location) => {
-          const { uri, range } = location;
-          const { start, end } = range;
-          // The double editor activation logic is apparently required: https://github.com/eclipse-theia/theia/issues/11284;
-          this.editorManager
-            .getByUri(new URI(uri), { mode: 'activate', selection: range })
-            .then(async (editor) => {
-              if (editor && this.shell) {
-                await this.shell.activateWidget(editor.id);
-                this.markErrorLocationInEditor(editor.editor, {
-                  start: start,
-                  end: { ...end, character: 1 << 30 },
-                });
-              }
-            });
-        });
-    }
-  }
-
-  private markErrorLocationInEditor(editor: TextEditor, range: Range): void {
-    this.editorDecorations.set(
-      editor.uri.toString(),
-      editor.deltaDecorations({
-        oldDecorations: [],
-        newDecorations: [
-          {
-            range,
-            options: {
-              isWholeLine: true,
-              className: 'core-error',
-              stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-            },
-          },
-        ],
-      })
-    );
   }
 
   private tryToastErrorMessage(error: unknown): void {

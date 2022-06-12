@@ -1,9 +1,10 @@
 import { ApplicationError } from '@theia/core';
+import { Location } from '@theia/core/shared/vscode-languageserver-protocol';
 import { BoardUserField } from '.';
 import { Board, Port } from '../../common/protocol/boards-service';
+import { ErrorInfo as CliErrorInfo } from '../../node/cli-error-parser';
 import { Programmer } from './boards-service';
 import { Sketch } from './sketches-service';
-import { ErrorInfo } from '../../node/cli-error-parser';
 
 export const CompilerWarningLiterals = [
   'None',
@@ -13,7 +14,17 @@ export const CompilerWarningLiterals = [
 ] as const;
 export type CompilerWarnings = typeof CompilerWarningLiterals[number];
 export namespace CoreError {
-  export type Info = ErrorInfo;
+  export type ErrorInfo = CliErrorInfo;
+  export interface Compiler extends ErrorInfo {
+    readonly message: string;
+    readonly location: Location;
+  }
+  export namespace Compiler {
+    export function is(error: ErrorInfo): error is Compiler {
+      const { message, location } = error;
+      return !!message && !!location;
+    }
+  }
   export const Codes = {
     Verify: 4001,
     Upload: 4002,
@@ -28,17 +39,19 @@ export namespace CoreError {
   export const BurnBootloaderFailed = create(Codes.BurnBootloader);
   export function is(
     error: unknown
-  ): error is ApplicationError<number, Info[]> {
+  ): error is ApplicationError<number, ErrorInfo[]> {
     return (
       error instanceof Error &&
       ApplicationError.is(error) &&
       Object.values(Codes).includes(error.code)
     );
   }
-  function create(code: number): ApplicationError.Constructor<number, Info[]> {
+  function create(
+    code: number
+  ): ApplicationError.Constructor<number, ErrorInfo[]> {
     return ApplicationError.declare(
       code,
-      ({ message, stack }: Error, data: Info[]) => {
+      ({ message, stack }: Error, data: ErrorInfo[]) => {
         return {
           data,
           message,

@@ -11,8 +11,8 @@ import { Sketch } from '../common/protocol';
 
 export interface ErrorInfo {
   readonly message?: string;
-  readonly details?: string;
   readonly location?: Location;
+  readonly details?: string;
 }
 export interface ErrorSource {
   readonly content: string | ReadonlyArray<Uint8Array>;
@@ -68,8 +68,8 @@ function isLocationInSketch(
 
 function errorInfo(): (value: ParseResult) => ErrorInfo {
   return ({ error, message, path, line, column }) => ({
-    details: error,
-    message,
+    message: error,
+    details: message,
     location: {
       uri: FileUri.create(path).toString(),
       range: range(line, column),

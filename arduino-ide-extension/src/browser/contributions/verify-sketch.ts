@@ -98,7 +98,7 @@ export class VerifySketch extends CoreServiceContribution {
     }
     try {
       this.verifyInProgress = true;
-      await this.discardEditorMarkers();
+      this.coreErrorHandler.reset();
       this.onDidChangeEmitter.fire();
       const { boardsConfig } = this.boardsServiceClientImpl;
       const [fqbn, sourceOverride] = await Promise.all([

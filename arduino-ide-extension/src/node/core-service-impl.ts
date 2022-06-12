@@ -91,7 +91,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
       options,
       () => new UploadRequest(),
       (client, req) => client.upload(req),
-      (error: Error, info: CoreError.Info[]) =>
+      (error: Error, info: CoreError.ErrorInfo[]) =>
         CoreError.UploadFailed(error, info)
     );
   }
@@ -103,7 +103,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
       options,
       () => new UploadUsingProgrammerRequest(),
       (client, req) => client.uploadUsingProgrammer(req),
-      (error: Error, info: CoreError.Info[]) =>
+      (error: Error, info: CoreError.ErrorInfo[]) =>
         CoreError.UploadUsingProgrammerFailed(error, info)
     );
   }
@@ -117,8 +117,8 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     ) => ClientReadableStream<UploadResponse | UploadUsingProgrammerResponse>,
     errorHandler: (
       error: Error,
-      info: CoreError.Info[]
-    ) => ApplicationError<number, CoreError.Info[]>
+      info: CoreError.ErrorInfo[]
+    ) => ApplicationError<number, CoreError.ErrorInfo[]>
   ): Promise<void> {
     await this.compile(Object.assign(options, { exportBinaries: false }));
 
