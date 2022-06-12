@@ -15,14 +15,23 @@ import {
   EditorDecoration,
   TrackedRangeStickiness,
 } from '@theia/editor/lib/browser/decorations/editor-decoration';
-
+import * as monaco from '@theia/monaco-editor-core';
+import { InoSelector } from '../ino-selectors';
+import { ProtocolToMonacoConverter } from '@theia/monaco/lib/browser/protocol-to-monaco-converter';
 @injectable()
-export class EditorDecorations extends Contribution {
+export class CompilerErrors
+  extends Contribution
+  implements monaco.languages.CodeLensProvider
+{
   @inject(EditorManager)
   private readonly editorManager: EditorManager;
 
+  @inject(ProtocolToMonacoConverter)
+  private readonly p2m: ProtocolToMonacoConverter;
+
   @inject(CoreErrorHandler)
   private readonly coreErrorHandler: CoreErrorHandler;
+  private readonly compilerErrors = new Map<string, CoreError.Compiler[]>();
 
   private shell: ApplicationShell | undefined;
 
@@ -31,21 +40,54 @@ export class EditorDecorations extends Contribution {
 
   override onStart(app: FrontendApplication): void {
     this.shell = app.shell;
+    monaco.languages.registerCodeLensProvider(InoSelector, this);
     this.coreErrorHandler.onCompilerErrorsDidChange((errors) =>
       this.handleCompilerErrorsDidChange(errors)
     );
+  }
+
+  provideCodeLenses(
+    model: monaco.editor.ITextModel,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _token: monaco.CancellationToken
+  ): monaco.languages.ProviderResult<monaco.languages.CodeLensList> {
+    const lenses: monaco.languages.CodeLens[] = [];
+    const errors = this.compilerErrors.get(model.uri.toString());
+    // Do not show "jump next" when one is available
+    if (errors && errors.length > 1) {
+      errors.forEach((error, index, self) => {
+        lenses.push({
+          range: this.p2m.asRange(error.location.range),
+          command: {
+            id: 'some-id',
+            title: 'hey',
+            tooltip: 'blabla',
+          },
+        });
+      });
+    }
+    return {
+      lenses,
+      dispose: () => {
+        /*noop*/
+      },
+    };
   }
 
   private async handleCompilerErrorsDidChange(
     errors: CoreError.Compiler[]
   ): Promise<void> {
     this.toDisposeOnCompilerErrorDidChange.dispose();
-    this.toDisposeOnCompilerErrorDidChange.pushAll(
-      await Promise.all([
-        this.decorateEditors(errors),
-        this.registerCodeLens(errors),
-      ])
+    Array.from(this.groupByResource(errors).entries()).forEach(([uri, error]) =>
+      this.compilerErrors.set(uri, error)
     );
+    this.toDisposeOnCompilerErrorDidChange.pushAll([
+      Disposable.create(() => this.compilerErrors.clear()),
+      ...(await Promise.all([
+        this.decorateEditors(this.compilerErrors),
+        this.registerCodeLens(this.compilerErrors),
+      ])),
+    ]);
     const first = errors[0];
     if (first) {
       await this.revealLocationInEditor(first.location);
@@ -53,28 +95,32 @@ export class EditorDecorations extends Contribution {
   }
 
   private async decorateEditors(
-    errors: CoreError.Compiler[]
+    errors: Map<string, CoreError.Compiler[]>
   ): Promise<Disposable> {
     return new DisposableCollection(
       ...(await Promise.all(
-        [
-          ...errors
-            .reduce((acc, curr) => {
-              const {
-                location: { uri },
-              } = curr;
-              let errors = acc.get(uri);
-              if (!errors) {
-                errors = [];
-                acc.set(uri, errors);
-              }
-              errors.push(curr);
-              return acc;
-            }, new Map<string, CoreError.Compiler[]>())
-            .entries(),
-        ].map(([uri, errors]) => this.decorateEditor(uri, errors))
+        [...errors.entries()].map(([uri, errors]) =>
+          this.decorateEditor(uri, errors)
+        )
       ))
     );
+  }
+
+  private groupByResource(
+    errors: CoreError.Compiler[]
+  ): Map<string, CoreError.Compiler[]> {
+    return errors.reduce((acc, curr) => {
+      const {
+        location: { uri },
+      } = curr;
+      let errors = acc.get(uri);
+      if (!errors) {
+        errors = [];
+        acc.set(uri, errors);
+      }
+      errors.push(curr);
+      return acc;
+    }, new Map<string, CoreError.Compiler[]>());
   }
 
   private async decorateEditor(
@@ -112,7 +158,7 @@ export class EditorDecorations extends Contribution {
   }
 
   private async registerCodeLens(
-    errors: CoreError.Compiler[]
+    errors: Map<string, CoreError.Compiler[]>
   ): Promise<Disposable> {
     return new DisposableCollection();
   }
