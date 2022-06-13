@@ -210,6 +210,7 @@ export class CompilerErrors
     this.errors.push(...decorations.errors);
     this.toDisposeOnCompilerErrorDidChange.pushAll([
       Disposable.create(() => (this.errors.length = 0)),
+      Disposable.create(() => this.onDidChangeEmitter.fire(this)),
       ...(await Promise.all([
         decorations.dispose,
         this.trackEditorsSelection(compilerErrorsPerResource),
@@ -272,7 +273,7 @@ export class CompilerErrors
       options: {
         isWholeLine: true,
         className: 'core-error',
-        stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+        stickiness: TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
       },
     };
   }
@@ -317,30 +318,35 @@ export class CompilerErrors
       console.trace(`Candidate error range: ${candidateErrorRange.toJSON()}`);
       console.trace(`Current selection range: ${currentSelection.toJSON()}`);
       // if editor selection intersects with the error range or the selection is in one of the lines of an error.
-      return (
+      const result =
         candidateErrorRange.intersectRanges(currentSelection) ||
         (candidateErrorRange.startLineNumber <=
           currentSelection.startLineNumber &&
-          candidateErrorRange.endLineNumber >= currentSelection.endLineNumber)
-      );
+          candidateErrorRange.endLineNumber >= currentSelection.endLineNumber);
+      console.trace(`Intersects: ${result}`);
+      return result;
     };
-    const error = await this.errors
-      .filter((error) => error.uri === uri)
-      .map((error) => ({
-        error,
-        rangeOf: ErrorDecoration.rangeOf(error, (uri) =>
-          this.monacoEditor(uri)
-        ),
-      }))
-      .map(async ({ error, rangeOf }) => {
-        const range = await rangeOf;
-        if (range) {
-          if (intersectsError(range, monacoSelection)) {
-            return error;
-          }
-        }
-        return undefined;
-      })
+    const error = (
+      await Promise.all(
+        this.errors
+          .filter((error) => error.uri === uri)
+          .map((error) => ({
+            error,
+            rangeOf: ErrorDecoration.rangeOf(error, (uri) =>
+              this.monacoEditor(uri)
+            ),
+          }))
+          .map(async ({ error, rangeOf }) => {
+            const range = await rangeOf;
+            if (range) {
+              if (intersectsError(range, monacoSelection)) {
+                return error;
+              }
+            }
+            return undefined;
+          })
+      )
+    )
       .filter(notEmpty)
       .shift();
     if (error) {
@@ -382,12 +388,13 @@ export class CompilerErrors
   private async revealLocationInEditor(
     location: Location
   ): Promise<EditorWidget | undefined> {
-    const { uri, range: selection } = location;
+    const { uri, range } = location;
     const editor = await this.editorManager.getByUri(new URI(uri), {
       mode: 'activate',
-      selection,
     });
     if (editor && this.shell) {
+      // to avoid flickering, reveal the range here and not with `getByUri`, because it uses `at: 'center'` for the reveal option.
+      editor.editor.revealRange(range, { at: 'centerIfOutsideViewport' });
       const activeWidget = await this.shell.activateWidget(editor.id);
       if (!activeWidget) {
         console.warn(
