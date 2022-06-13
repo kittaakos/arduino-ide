@@ -292,7 +292,7 @@ import { PreferenceTreeGenerator as TheiaPreferenceTreeGenerator } from '@theia/
 import { AboutDialog } from './theia/core/about-dialog';
 import { AboutDialog as TheiaAboutDialog } from '@theia/core/lib/browser/about-dialog';
 import { CoreErrorHandler } from './contributions/core-error-handler';
-import { CompilerErrors } from './contributions/editor-decorations';
+import { CompilerErrors } from './contributions/compiler-errors';
 
 MonacoThemingService.register({
   id: 'arduino-theme',

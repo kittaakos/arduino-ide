@@ -1,5 +1,9 @@
 import { ApplicationError } from '@theia/core';
-import { Location } from '@theia/core/shared/vscode-languageserver-protocol';
+import URI from '@theia/core/lib/common/uri';
+import {
+  Location,
+  Range,
+} from '@theia/core/shared/vscode-languageserver-protocol';
 import { BoardUserField } from '.';
 import { Board, Port } from '../../common/protocol/boards-service';
 import { ErrorInfo as CliErrorInfo } from '../../node/cli-error-parser';
@@ -23,6 +27,31 @@ export namespace CoreError {
     export function is(error: ErrorInfo): error is Compiler {
       const { message, location } = error;
       return !!message && !!location;
+    }
+    export function toString({ location, message }: Compiler): string {
+      const {
+        uri,
+        range: {
+          start: { line, character },
+        },
+      } = location;
+      return `${new URI(uri)
+        .withFragment(`L${line},${character}`)
+        .toString()} => '${message}'`;
+    }
+    export function sameAs(left: Compiler, right: Compiler): boolean {
+      const sameRange = (left: Range, right: Range) =>
+        left.start.line === right.start.line &&
+        left.start.character === right.start.character &&
+        left.end.line === right.end.line &&
+        left.end.character === right.end.character;
+      const sameLocation = (left: Location, right: Location) =>
+        left.uri === right.uri && sameRange(left.range, right.range);
+      return (
+        left.message === right.message &&
+        left.details === right.details &&
+        sameLocation(left.location, right.location)
+      );
     }
   }
   export const Codes = {
