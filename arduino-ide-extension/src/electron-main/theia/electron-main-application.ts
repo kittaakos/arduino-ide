@@ -354,7 +354,6 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
       electronWindow.webContents.openDevTools();
     }
     this.attachListenersToWindow(electronWindow);
-    electronWindow.webContents.openDevTools();
     return electronWindow;
   }
 
