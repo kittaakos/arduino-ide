@@ -19,24 +19,22 @@ import {
   UploadUsingProgrammerResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/upload_pb';
 import { ResponseService } from '../common/protocol/response-service';
-import { NotificationServiceServer, OutputMessage } from '../common/protocol';
+import { Board, OutputMessage, Port } from '../common/protocol';
 import { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
-import { Port } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
+import { Port as GrpcPort } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
 import { ApplicationError, Disposable } from '@theia/core';
 import { MonitorManager } from './monitor-manager';
 import { SimpleBuffer } from './utils/simple-buffer';
 import { tryParseError } from './cli-error-parser';
+import { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
 
 @injectable()
 export class CoreServiceImpl extends CoreClientAware implements CoreService {
   @inject(ResponseService)
-  protected readonly responseService: ResponseService;
-
-  @inject(NotificationServiceServer)
-  protected readonly notificationService: NotificationServiceServer;
+  private readonly responseService: ResponseService;
 
   @inject(MonitorManager)
-  protected readonly monitorManager: MonitorManager;
+  private readonly monitorManager: MonitorManager;
 
   async compile(
     options: CoreService.Compile.Options & {
@@ -46,48 +44,58 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
   ): Promise<void> {
     const coreClient = await this.coreClient();
     const { client, instance } = coreClient;
+    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
+    const request = this.compileRequest(options, instance);
+    return new Promise<void>((resolve, reject) => {
+      client
+        .compile(request)
+        .on('data', onDataHandler)
+        .on('error', (error) => {
+          dispose();
+          reject(
+            CoreError.VerifyFailed(
+              error,
+              tryParseError({ content: stderr, sketch: options.sketch })
+            )
+          );
+        })
+        .on('end', () => {
+          dispose();
+          resolve();
+        });
+    });
+  }
 
+  private compileRequest(
+    options: CoreService.Compile.Options & {
+      exportBinaries?: boolean;
+      compilerWarnings?: CompilerWarnings;
+    },
+    instance: Instance
+  ): CompileRequest {
     const { sketch, board, compilerWarnings } = options;
     const sketchUri = sketch.uri;
     const sketchPath = FileUri.fsPath(sketchUri);
-    const compileReq = new CompileRequest();
-    compileReq.setInstance(instance);
-    compileReq.setSketchPath(sketchPath);
+    const request = new CompileRequest();
+    request.setInstance(instance);
+    request.setSketchPath(sketchPath);
     if (board?.fqbn) {
-      compileReq.setFqbn(board.fqbn);
+      request.setFqbn(board.fqbn);
     }
     if (compilerWarnings) {
-      compileReq.setWarnings(compilerWarnings.toLowerCase());
+      request.setWarnings(compilerWarnings.toLowerCase());
     }
-    compileReq.setOptimizeForDebug(options.optimizeForDebug);
-    compileReq.setPreprocess(false);
-    compileReq.setVerbose(options.verbose);
-    compileReq.setQuiet(false);
+    request.setOptimizeForDebug(options.optimizeForDebug);
+    request.setPreprocess(false);
+    request.setVerbose(options.verbose);
+    request.setQuiet(false);
     if (typeof options.exportBinaries === 'boolean') {
       const exportBinaries = new BoolValue();
       exportBinaries.setValue(options.exportBinaries);
-      compileReq.setExportBinaries(exportBinaries);
+      request.setExportBinaries(exportBinaries);
     }
-    this.mergeSourceOverrides(compileReq, options);
-
-    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
-    const response = client.compile(compileReq);
-    return new Promise<void>((resolve, reject) => {
-      response.on('data', onDataHandler);
-      response.on('error', (error) => {
-        dispose();
-        reject(
-          CoreError.VerifyFailed(
-            error,
-            tryParseError({ content: stderr, sketch })
-          )
-        );
-      });
-      response.on('end', () => {
-        dispose();
-        resolve();
-      });
-    });
+    this.mergeSourceOverrides(request, options);
+    return request;
   }
 
   async upload(options: CoreService.Upload.Options): Promise<void> {
@@ -114,10 +122,10 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
 
   protected async doUpload(
     options: CoreService.Upload.Options,
-    requestProvider: () => UploadRequest | UploadUsingProgrammerRequest,
+    requestFactory: () => UploadRequest | UploadUsingProgrammerRequest,
     responseHandler: (
       client: ArduinoCoreServiceClient,
-      req: UploadRequest | UploadUsingProgrammerRequest
+      request: UploadRequest | UploadUsingProgrammerRequest
     ) => ClientReadableStream<UploadResponse | UploadUsingProgrammerResponse>,
     errorHandler: (
       error: Error,
@@ -128,95 +136,103 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
 
     const coreClient = await this.coreClient();
     const { client, instance } = coreClient;
+    const request = this.uploadOrUploadUsingProgrammerRequest(
+      options,
+      instance,
+      requestFactory
+    );
+    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
+    return this.notifyUploadWillStart(options).then(() =>
+      new Promise<void>((resolve, reject) => {
+        responseHandler(client, request)
+          .on('data', onDataHandler)
+          .on('error', (error) => {
+            dispose();
+            reject(
+              errorHandler(
+                error,
+                tryParseError({ content: stderr, sketch: options.sketch })
+              )
+            );
+          })
+          .on('end', () => {
+            dispose();
+            resolve();
+          });
+      }).finally(async () => this.notifyUploadDidFinish(options))
+    );
+  }
+
+  private uploadOrUploadUsingProgrammerRequest(
+    options: CoreService.Upload.Options,
+    instance: Instance,
+    requestFactory: () => UploadRequest | UploadUsingProgrammerRequest
+  ): UploadRequest | UploadUsingProgrammerRequest {
     const { sketch, board, port, programmer } = options;
     const sketchPath = FileUri.fsPath(sketch.uri);
-
-    await this.monitorManager.notifyUploadStarted(board, port);
-
-    const req = requestProvider();
-    req.setInstance(instance);
-    req.setSketchPath(sketchPath);
+    const request = requestFactory();
+    request.setInstance(instance);
+    request.setSketchPath(sketchPath);
     if (board?.fqbn) {
-      req.setFqbn(board.fqbn);
+      request.setFqbn(board.fqbn);
     }
-    const p = new Port();
-    if (port) {
-      p.setAddress(port.address);
-      p.setLabel(port.addressLabel);
-      p.setProtocol(port.protocol);
-      p.setProtocolLabel(port.protocolLabel);
-    }
-    req.setPort(p);
+    request.setPort(this.createPort(port));
     if (programmer) {
-      req.setProgrammer(programmer.id);
+      request.setProgrammer(programmer.id);
     }
-    req.setVerbose(options.verbose);
-    req.setVerify(options.verify);
+    request.setVerbose(options.verbose);
+    request.setVerify(options.verify);
 
     options.userFields.forEach((e) => {
-      req.getUserFieldsMap().set(e.name, e.value);
+      request.getUserFieldsMap().set(e.name, e.value);
     });
-
-    const response = responseHandler(client, req);
-    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
-    return new Promise<void>((resolve, reject) => {
-      response.on('data', onDataHandler);
-      response.on('error', (error) => {
-        dispose();
-        reject(errorHandler(error, tryParseError({ content: stderr, sketch })));
-      });
-      response.on('end', () => {
-        dispose();
-        resolve();
-      });
-    });
+    return request;
   }
 
   async burnBootloader(options: CoreService.Bootloader.Options): Promise<void> {
-    const { board, port, programmer } = options;
-    await this.monitorManager.notifyUploadStarted(board, port);
-
-    await this.coreClientProvider.initialized;
     const coreClient = await this.coreClient();
     const { client, instance } = coreClient;
-    const burnReq = new BurnBootloaderRequest();
-    burnReq.setInstance(instance);
-    if (board?.fqbn) {
-      burnReq.setFqbn(board.fqbn);
-    }
-    const p = new Port();
-    if (port) {
-      p.setAddress(port.address);
-      p.setLabel(port.addressLabel);
-      p.setProtocol(port.protocol);
-      p.setProtocolLabel(port.protocolLabel);
-    }
-    burnReq.setPort(p);
-    if (programmer) {
-      burnReq.setProgrammer(programmer.id);
-    }
-    burnReq.setVerify(options.verify);
-    burnReq.setVerbose(options.verbose);
-    const result = client.burnBootloader(burnReq);
     const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
-    return new Promise<void>((resolve, reject) => {
-      result.on('data', onDataHandler);
-      result.on('error', (error) => {
-        dispose();
-        reject(
-          CoreError.BurnBootloaderFailed(
-            error,
-            tryParseError({ content: stderr })
-          )
-        );
-      });
-      result.on('end', () => {
-        dispose();
-        resolve();
-      });
-    }).finally(
-      async () => await this.monitorManager.notifyUploadFinished(board, port)
+    const request = this.burnBootloaderRequest(options, instance);
+    return this.notifyUploadWillStart(options).then(() =>
+      new Promise<void>((resolve, reject) => {
+        client
+          .burnBootloader(request)
+          .on('data', onDataHandler)
+          .on('error', (error) => {
+            dispose();
+            reject(
+              CoreError.BurnBootloaderFailed(
+                error,
+                tryParseError({ content: stderr })
+              )
+            );
+          })
+          .on('end', () => {
+            dispose();
+            resolve();
+          });
+      }).finally(async () => await this.notifyUploadDidFinish(options))
     );
+  }
+
+  private burnBootloaderRequest(
+    options: CoreService.Bootloader.Options,
+    instance: Instance
+  ): BurnBootloaderRequest {
+    const { board, port, programmer } = options;
+    const request = new BurnBootloaderRequest();
+    request.setInstance(instance);
+    if (board?.fqbn) {
+      request.setFqbn(board.fqbn);
+    }
+    request.setPort(this.createPort(port));
+    if (programmer) {
+      request.setProgrammer(programmer.id);
+    }
+    request.setVerify(options.verify);
+    request.setVerbose(options.verbose);
+    return request;
   }
 
   private createOnDataHandler<R extends StreamingResponse>(): Disposable & {
@@ -245,6 +261,26 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     };
   }
 
+  private async notifyUploadWillStart({
+    board,
+    port,
+  }: {
+    board?: Board | undefined;
+    port?: Port | undefined;
+  }): Promise<void> {
+    this.monitorManager.notifyUploadStarted(board, port);
+  }
+
+  private async notifyUploadDidFinish({
+    board,
+    port,
+  }: {
+    board?: Board | undefined;
+    port?: Port | undefined;
+  }): Promise<void> {
+    this.monitorManager.notifyUploadFinished(board, port);
+  }
+
   private mergeSourceOverrides(
     req: { getSourceOverrideMap(): jspb.Map<string, string> },
     options: CoreService.Compile.Options
@@ -257,6 +293,17 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
         req.getSourceOverrideMap().set(relativePath, content);
       }
     }
+  }
+
+  private createPort(port: Port | undefined): GrpcPort {
+    const grpcPort = new GrpcPort();
+    if (port) {
+      grpcPort.setAddress(port.address);
+      grpcPort.setLabel(port.addressLabel);
+      grpcPort.setProtocol(port.protocol);
+      grpcPort.setProtocolLabel(port.protocolLabel);
+    }
+    return grpcPort;
   }
 }
 /**
