@@ -70,19 +70,23 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     }
     this.mergeSourceOverrides(compileReq, options);
 
-    const { stderr, onDataHandler } = this.createOnDataHandler();
+    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
     const response = client.compile(compileReq);
     return new Promise<void>((resolve, reject) => {
       response.on('data', onDataHandler);
-      response.on('error', (error) =>
+      response.on('error', (error) => {
+        dispose();
         reject(
           CoreError.VerifyFailed(
             error,
             tryParseError({ content: stderr, sketch })
           )
-        )
-      );
-      response.on('end', () => resolve());
+        );
+      });
+      response.on('end', () => {
+        dispose();
+        resolve();
+      });
     });
   }
 
@@ -157,10 +161,14 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
     return new Promise<void>((resolve, reject) => {
       response.on('data', onDataHandler);
-      response.on('error', (error) =>
-        reject(errorHandler(error, tryParseError({ content: stderr, sketch })))
-      );
-      response.on('end', () => resolve());
+      response.on('error', (error) => {
+        dispose();
+        reject(errorHandler(error, tryParseError({ content: stderr, sketch })));
+      });
+      response.on('end', () => {
+        dispose();
+        resolve();
+      });
     });
   }
 
@@ -193,19 +201,22 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
     return new Promise<void>((resolve, reject) => {
       result.on('data', onDataHandler);
-      result.on('error', (error) =>
+      result.on('error', (error) => {
+        dispose();
         reject(
           CoreError.BurnBootloaderFailed(
             error,
             tryParseError({ content: stderr })
           )
-        )
-      );
-      result.on('end', resolve);
-    }).finally(async () => {
-      dispose();
-      await this.monitorManager.notifyUploadFinished(board, port);
-    });
+        );
+      });
+      result.on('end', () => {
+        dispose();
+        resolve();
+      });
+    }).finally(
+      async () => await this.monitorManager.notifyUploadFinished(board, port)
+    );
   }
 
   private createOnDataHandler<R extends StreamingResponse>(): Disposable & {

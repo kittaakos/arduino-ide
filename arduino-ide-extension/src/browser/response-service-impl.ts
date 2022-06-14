@@ -34,12 +34,11 @@ export class ResponseServiceImpl implements ResponseServiceArduino {
     this.progressDidChangeEmitter.fire(progress);
   }
 }
-function mapSeverity(
-  severity?: 'error' | 'warning' | 'info'
-): OutputChannelSeverity {
-  if (severity === 'error') {
+
+function mapSeverity(severity?: OutputMessage.Severity): OutputChannelSeverity {
+  if (severity === OutputMessage.Severity.Error) {
     return OutputChannelSeverity.Error;
-  } else if (severity === 'warning') {
+  } else if (severity === OutputMessage.Severity.Warning) {
     return OutputChannelSeverity.Warning;
   }
   return OutputChannelSeverity.Info;
