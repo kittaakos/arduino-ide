@@ -4,6 +4,7 @@ import {
   Disposable,
   DisposableCollection,
   Emitter,
+  nls,
   notEmpty,
 } from '@theia/core';
 import { ApplicationShell, FrontendApplication } from '@theia/core/lib/browser';
@@ -92,14 +93,23 @@ export class CompilerErrors
     this.currentErrorDidChangEmitter.event;
   private readonly toDisposeOnCompilerErrorDidChange =
     new DisposableCollection();
-  private currentError: ErrorDecoration | undefined;
   private shell: ApplicationShell | undefined;
+  private currentError: ErrorDecoration | undefined;
+  private get currentErrorIndex(): number {
+    const current = this.currentError;
+    if (!current) {
+      return -1;
+    }
+    return this.errors.findIndex((error) =>
+      ErrorDecoration.sameAs(error, current)
+    );
+  }
 
   override onStart(app: FrontendApplication): void {
     this.shell = app.shell;
     monaco.languages.registerCodeLensProvider(InoSelector, this);
     this.coreErrorHandler.onCompilerErrorsDidChange((errors) =>
-      this.handleCompilerErrorsDidChange(errors)
+      this.filter(errors).then(this.handleCompilerErrorsDidChange.bind(this))
     );
     this.onCurrentErrorDidChange(async (error) => {
       const range = await ErrorDecoration.rangeOf(error, (uri) =>
@@ -109,53 +119,46 @@ export class CompilerErrors
         console.warn(`Could not find range of decoration: ${error.id}`);
         return;
       }
-      this.revealLocationInEditor({
+      const editor = await this.revealLocationInEditor({
         uri: error.uri,
         range: this.mp2.asRange(range),
-      }).then((editor) => {
-        if (!editor) {
-          console.warn(`Failed to mark error ${error.id} as the current one.`);
-        }
       });
+      if (!editor) {
+        console.warn(`Failed to mark error ${error.id} as the current one.`);
+      }
     });
   }
 
   override registerCommands(registry: CommandRegistry): void {
-    registry.registerCommand(CompilerErrors.Commands.REVEAL_NEXT_ERROR, {
-      execute: (currentError: ErrorDecoration) => {
-        const index = this.errors.findIndex((candidate) =>
-          ErrorDecoration.sameAs(candidate, currentError)
-        );
+    registry.registerCommand(CompilerErrors.Commands.NEXT_ERROR, {
+      execute: () => {
+        const index = this.currentErrorIndex;
         if (index < 0) {
           console.warn(
-            `Could not advance to next error. ${currentError.id} is not a known error.`
+            `Could not advance to next error. Unknown current error.`
           );
           return;
         }
         const nextError =
-          index === this.errors.length - 1
-            ? this.errors[0]
-            : this.errors[index + 1];
+          this.errors[index === this.errors.length - 1 ? 0 : index + 1];
         this.markAsCurrentError(nextError);
       },
+      isEnabled: () => !!this.currentError && this.errors.length > 1,
     });
-    registry.registerCommand(CompilerErrors.Commands.REVEAL_PREVIOUS_ERROR, {
-      execute: (currentError: ErrorDecoration) => {
-        const index = this.errors.findIndex((candidate) =>
-          ErrorDecoration.sameAs(candidate, currentError)
-        );
+    registry.registerCommand(CompilerErrors.Commands.PREVIOUS_ERROR, {
+      execute: () => {
+        const index = this.currentErrorIndex;
         if (index < 0) {
           console.warn(
-            `Could not advance to previous error. ${currentError.id} is not a known error.`
+            `Could not advance to previous error. Unknown current error.`
           );
           return;
         }
         const previousError =
-          index === 0
-            ? this.errors[this.errors.length - 1]
-            : this.errors[index - 1];
+          this.errors[index === 0 ? this.errors.length - 1 : index - 1];
         this.markAsCurrentError(previousError);
       },
+      isEnabled: () => !!this.currentError && this.errors.length > 1,
     });
   }
 
@@ -182,16 +185,19 @@ export class CompilerErrors
           {
             range,
             command: {
-              id: CompilerErrors.Commands.REVEAL_PREVIOUS_ERROR.id,
-              title: 'Go to Previous Error',
+              id: CompilerErrors.Commands.PREVIOUS_ERROR.id,
+              title: nls.localize(
+                'arduino/editor/previousError',
+                'Previous Error'
+              ),
               arguments: [this.currentError],
             },
           },
           {
             range,
             command: {
-              id: CompilerErrors.Commands.REVEAL_NEXT_ERROR.id,
-              title: 'Go to Next Error',
+              id: CompilerErrors.Commands.NEXT_ERROR.id,
+              title: nls.localize('arduino/editor/nextError', 'Next Error'),
               arguments: [this.currentError],
             },
           }
@@ -239,6 +245,7 @@ export class CompilerErrors
     if (this.preferences['arduino.compile.experimental']) {
       return errors;
     }
+    // Always shows maximum one error; hence the code lens navigation is unavailable.
     return [errors[0]];
   }
 
@@ -277,11 +284,12 @@ export class CompilerErrors
     });
     return {
       dispose: Disposable.create(() => {
-        this.editorManager.getByUri(new URI(uri)).then((e) => {
-          if (e) {
-            e.editor.deltaDecorations({ oldDecorations, newDecorations: [] });
-          }
-        });
+        if (editor) {
+          editor.editor.deltaDecorations({
+            oldDecorations,
+            newDecorations: [],
+          });
+        }
       }),
       errors: oldDecorations.map((id) => ({ id, uri })),
     };
@@ -410,6 +418,7 @@ export class CompilerErrors
     });
     if (editor && this.shell) {
       // to avoid flickering, reveal the range here and not with `getByUri`, because it uses `at: 'center'` for the reveal option.
+      // TODO: check the community reaction whether it is better to set the focus at the error marker. it might cause flickering even if errors are close to each other
       editor.editor.revealRange(range, { at: 'centerIfOutsideViewport' });
       const activeWidget = await this.shell.activateWidget(editor.id);
       if (!activeWidget) {
@@ -459,11 +468,11 @@ export class CompilerErrors
 }
 export namespace CompilerErrors {
   export namespace Commands {
-    export const REVEAL_NEXT_ERROR: Command = {
-      id: 'arduino-reveal-next-error',
+    export const NEXT_ERROR: Command = {
+      id: 'arduino-editor-next-error',
     };
-    export const REVEAL_PREVIOUS_ERROR: Command = {
-      id: 'arduino-reveal-previous-error',
+    export const PREVIOUS_ERROR: Command = {
+      id: 'arduino-editor-previous-error',
     };
   }
 }
