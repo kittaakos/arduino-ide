@@ -33,6 +33,14 @@ export const ArduinoConfigSchema: PreferenceSchema = {
       ),
       default: false,
     },
+    'arduino.compile.experimental': {
+      type: 'boolean',
+      description: nls.localize(
+        'arduino/preferences/compile.experimental',
+        'True if the IDE should handle multiple compiler errors. False by default'
+      ),
+      default: false,
+    },
     'arduino.compile.warnings': {
       enum: [...CompilerWarningLiterals],
       description: nls.localize(
@@ -180,6 +188,7 @@ export const ArduinoConfigSchema: PreferenceSchema = {
 export interface ArduinoConfiguration {
   'arduino.language.log': boolean;
   'arduino.compile.verbose': boolean;
+  'arduino.compile.experimental': boolean;
   'arduino.compile.warnings': CompilerWarnings;
   'arduino.upload.verbose': boolean;
   'arduino.upload.verify': boolean;

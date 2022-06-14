@@ -24,6 +24,7 @@ import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
 import { MonacoToProtocolConverter } from '@theia/monaco/lib/browser/monaco-to-protocol-converter';
 import { ProtocolToMonacoConverter } from '@theia/monaco/lib/browser/protocol-to-monaco-converter';
 import { CoreError } from '../../common/protocol/core-service';
+import { ArduinoPreferences } from '../arduino-preferences';
 import { InoSelector } from '../ino-selectors';
 import { fullRange } from '../utils/monaco';
 import { Contribution } from './contribution';
@@ -73,12 +74,16 @@ export class CompilerErrors
   private readonly editorManager: EditorManager;
 
   @inject(ProtocolToMonacoConverter)
-  readonly p2m: ProtocolToMonacoConverter;
+  private readonly p2m: ProtocolToMonacoConverter;
+
   @inject(MonacoToProtocolConverter)
-  readonly mp2: MonacoToProtocolConverter;
+  private readonly mp2: MonacoToProtocolConverter;
 
   @inject(CoreErrorHandler)
   private readonly coreErrorHandler: CoreErrorHandler;
+
+  @inject(ArduinoPreferences)
+  private readonly preferences: ArduinoPreferences;
 
   private readonly errors: ErrorDecoration[] = [];
   private readonly onDidChangeEmitter = new monaco.Emitter<this>();
@@ -205,7 +210,9 @@ export class CompilerErrors
     errors: CoreError.Compiler[]
   ): Promise<void> {
     this.toDisposeOnCompilerErrorDidChange.dispose();
-    const compilerErrorsPerResource = this.groupByResource(errors);
+    const compilerErrorsPerResource = this.groupByResource(
+      await this.filter(errors)
+    );
     const decorations = await this.decorateEditors(compilerErrorsPerResource);
     this.errors.push(...decorations.errors);
     this.toDisposeOnCompilerErrorDidChange.pushAll([
@@ -216,10 +223,23 @@ export class CompilerErrors
         this.trackEditorsSelection(compilerErrorsPerResource),
       ])),
     ]);
-    const first = this.errors[0];
-    if (first) {
-      await this.markAsCurrentError(first);
+    const currentError = this.errors[0];
+    if (currentError) {
+      await this.markAsCurrentError(currentError);
     }
+  }
+
+  private async filter(
+    errors: CoreError.Compiler[]
+  ): Promise<CoreError.Compiler[]> {
+    if (!errors.length) {
+      return [];
+    }
+    await this.preferences.ready;
+    if (this.preferences['arduino.compile.experimental']) {
+      return errors;
+    }
+    return [errors[0]];
   }
 
   private async decorateEditors(
