@@ -227,19 +227,3 @@ Please use Serial.write() instead.`
 function tr(key: string, text: string, ...args: FormatType[]): string {
   return nls.localize(`arduino/cli-error-parser/${key}`, text, ...args);
 }
-
-/*
-In file included from /Users/a.kitta/Documents/Arduino/sketch_jun1b/sketch_jun1b.ino:1:0:
-/Users/a.kitta/Documents/Arduino/sketch_jun1b/header.h:1:1: error: 'cosnst' does not name a type; did you mean 'cosl'?
- cosnst int i = 0;
- ^~~~~~
- cosl
-
-/main.ino/:
-#include "header.h"
-void setup() {}
-void loop() {}
-
-/header.h/:
-cosnst int i = 0;
-*/

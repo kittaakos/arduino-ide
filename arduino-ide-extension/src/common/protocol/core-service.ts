@@ -80,11 +80,10 @@ export namespace CoreError {
   ): ApplicationError.Constructor<number, ErrorInfo[]> {
     return ApplicationError.declare(
       code,
-      ({ message, stack }: Error, data: ErrorInfo[]) => {
+      (message: string, data: ErrorInfo[]) => {
         return {
           data,
           message,
-          stack,
         };
       }
     );

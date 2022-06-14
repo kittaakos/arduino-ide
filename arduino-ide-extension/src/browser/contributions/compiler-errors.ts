@@ -311,10 +311,6 @@ export class CompilerErrors
           if (!editor) {
             return Disposable.NULL;
           }
-          if (editor.editor instanceof MonacoEditor) {
-            const control = editor.editor.getControl();
-            console.log(typeof control);
-          }
           return editor.editor.onSelectionChanged((selection) =>
             this.handleSelectionChange(uri, selection)
           );

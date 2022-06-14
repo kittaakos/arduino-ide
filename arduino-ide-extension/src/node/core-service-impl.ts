@@ -22,11 +22,12 @@ import { ResponseService } from '../common/protocol/response-service';
 import { Board, OutputMessage, Port } from '../common/protocol';
 import { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
 import { Port as GrpcPort } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
-import { ApplicationError, Disposable } from '@theia/core';
+import { ApplicationError, Disposable, nls } from '@theia/core';
 import { MonitorManager } from './monitor-manager';
 import { SimpleBuffer } from './utils/simple-buffer';
 import { tryParseError } from './cli-error-parser';
 import { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
+import { firstToUpperCase, notEmpty } from '../common/utils';
 
 @injectable()
 export class CoreServiceImpl extends CoreClientAware implements CoreService {
@@ -52,12 +53,23 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
         .on('data', onDataHandler)
         .on('error', (error) => {
           dispose();
-          reject(
-            CoreError.VerifyFailed(
-              error,
-              tryParseError({ content: stderr, sketch: options.sketch })
-            )
+          const errors = tryParseError({
+            content: stderr,
+            sketch: options.sketch,
+          });
+          const message = nls.localize(
+            'arduino/compile/error',
+            'Compilation error: {0}',
+            errors
+              .map(({ message }) => message)
+              .filter(notEmpty)
+              .shift() ?? detailsOf(error)
           );
+          this.responseService.appendToOutput({
+            chunk: (detailsOf(error) ?? error.message) + '\n\n' + message,
+            severity: OutputMessage.Severity.Error,
+          });
+          reject(CoreError.VerifyFailed(message, errors));
         })
         .on('end', () => {
           dispose();
@@ -103,8 +115,9 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
       options,
       () => new UploadRequest(),
       (client, req) => client.upload(req),
-      (error: Error, info: CoreError.ErrorInfo[]) =>
-        CoreError.UploadFailed(error, info)
+      (message: string, info: CoreError.ErrorInfo[]) =>
+        CoreError.UploadFailed(message, info),
+      'upload'
     );
   }
 
@@ -115,8 +128,9 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
       options,
       () => new UploadUsingProgrammerRequest(),
       (client, req) => client.uploadUsingProgrammer(req),
-      (error: Error, info: CoreError.ErrorInfo[]) =>
-        CoreError.UploadUsingProgrammerFailed(error, info)
+      (message: string, info: CoreError.ErrorInfo[]) =>
+        CoreError.UploadUsingProgrammerFailed(message, info),
+      'upload using programmer'
     );
   }
 
@@ -128,9 +142,10 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
       request: UploadRequest | UploadUsingProgrammerRequest
     ) => ClientReadableStream<UploadResponse | UploadUsingProgrammerResponse>,
     errorHandler: (
-      error: Error,
+      message: string,
       info: CoreError.ErrorInfo[]
-    ) => ApplicationError<number, CoreError.ErrorInfo[]>
+    ) => ApplicationError<number, CoreError.ErrorInfo[]>,
+    task: string
   ): Promise<void> {
     await this.compile(Object.assign(options, { exportBinaries: false }));
 
@@ -150,7 +165,12 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
             dispose();
             reject(
               errorHandler(
-                error,
+                nls.localize(
+                  'arduino/upload/error',
+                  '{0} error: {1}',
+                  firstToUpperCase(task),
+                  detailsOf(error)
+                ),
                 tryParseError({ content: stderr, sketch: options.sketch })
               )
             );
@@ -159,7 +179,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
             dispose();
             resolve();
           });
-      }).finally(async () => this.notifyUploadDidFinish(options))
+      }).finally(async () => await this.notifyUploadDidFinish(options))
     );
   }
 
@@ -203,7 +223,11 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
             dispose();
             reject(
               CoreError.BurnBootloaderFailed(
-                error,
+                nls.localize(
+                  'arduino/burnBootloader/error',
+                  'Error while burning the bootloader: {0}',
+                  detailsOf(error)
+                ),
                 tryParseError({ content: stderr })
               )
             );
@@ -327,4 +351,12 @@ namespace StreamingResponse {
       onData(out, err);
     };
   }
+}
+
+function detailsOf(error: Error): string | undefined {
+  if ('details' in error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (error as any).details;
+  }
+  return undefined;
 }
