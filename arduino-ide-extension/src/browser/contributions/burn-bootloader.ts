@@ -1,5 +1,4 @@
 import { inject, injectable } from '@theia/core/shared/inversify';
-import { OutputChannelManager } from '@theia/output/lib/browser/output-channel';
 import { ArduinoMenus } from '../menu/arduino-menus';
 import { BoardsDataStore } from '../boards/boards-data-store';
 import { BoardsServiceProvider } from '../boards/boards-service-provider';
@@ -18,9 +17,6 @@ export class BurnBootloader extends CoreServiceContribution {
 
   @inject(BoardsServiceProvider)
   protected readonly boardsServiceClientImpl: BoardsServiceProvider;
-
-  @inject(OutputChannelManager)
-  protected override readonly outputChannelManager: OutputChannelManager;
 
   override registerCommands(registry: CommandRegistry): void {
     registry.registerCommand(BurnBootloader.Commands.BURN_BOOTLOADER, {
