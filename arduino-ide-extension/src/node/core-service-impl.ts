@@ -28,6 +28,7 @@ import { SimpleBuffer } from './utils/simple-buffer';
 import { tryParseError } from './cli-error-parser';
 import { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
 import { firstToUpperCase, notEmpty } from '../common/utils';
+import { ServiceError } from './service-error';
 
 @injectable()
 export class CoreServiceImpl extends CoreClientAware implements CoreService {
@@ -45,37 +46,41 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
   ): Promise<void> {
     const coreClient = await this.coreClient();
     const { client, instance } = coreClient;
-    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
+    const handler = this.createOnDataHandler();
     const request = this.compileRequest(options, instance);
     return new Promise<void>((resolve, reject) => {
       client
         .compile(request)
-        .on('data', onDataHandler)
+        .on('data', handler.onData)
         .on('error', (error) => {
-          dispose();
-          const errors = tryParseError({
-            content: stderr,
-            sketch: options.sketch,
-          });
-          const message = nls.localize(
-            'arduino/compile/error',
-            'Compilation error: {0}',
-            errors
-              .map(({ message }) => message)
-              .filter(notEmpty)
-              .shift() ?? detailsOf(error)
-          );
-          this.responseService.appendToOutput({
-            chunk: (detailsOf(error) ?? error.message) + '\n\n' + message,
-            severity: OutputMessage.Severity.Error,
-          });
-          reject(CoreError.VerifyFailed(message, errors));
+          if (!ServiceError.is(error)) {
+            console.error(
+              'Unexpected error occurred while compiling the sketch.',
+              error
+            );
+            reject(error);
+          } else {
+            const compilerErrors = tryParseError({
+              content: handler.stderr,
+              sketch: options.sketch,
+            });
+            const message = nls.localize(
+              'arduino/compile/error',
+              'Compilation error: {0}',
+              compilerErrors
+                .map(({ message }) => message)
+                .filter(notEmpty)
+                .shift() ?? error.details
+            );
+            this.sendResponse(
+              error.details + '\n\n' + message,
+              OutputMessage.Severity.Error
+            );
+            reject(CoreError.VerifyFailed(message, compilerErrors));
+          }
         })
-        .on('end', () => {
-          dispose();
-          resolve();
-        });
-    });
+        .on('end', resolve);
+    }).finally(() => handler.dispose());
   }
 
   private compileRequest(
@@ -156,30 +161,39 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
       instance,
       requestFactory
     );
-    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
+    const handler = this.createOnDataHandler();
     return this.notifyUploadWillStart(options).then(() =>
       new Promise<void>((resolve, reject) => {
         responseHandler(client, request)
-          .on('data', onDataHandler)
+          .on('data', handler.onData)
           .on('error', (error) => {
-            dispose();
-            reject(
-              errorHandler(
-                nls.localize(
-                  'arduino/upload/error',
-                  '{0} error: {1}',
-                  firstToUpperCase(task),
-                  detailsOf(error)
-                ),
-                tryParseError({ content: stderr, sketch: options.sketch })
-              )
-            );
+            if (!ServiceError.is(error)) {
+              console.error(`Unexpected error occurred while ${task}.`, error);
+              reject(error);
+            } else {
+              const message = nls.localize(
+                'arduino/upload/error',
+                '{0} error: {1}',
+                firstToUpperCase(task),
+                error.details
+              );
+              this.sendResponse(error.details, OutputMessage.Severity.Error);
+              reject(
+                errorHandler(
+                  message,
+                  tryParseError({
+                    content: handler.stderr,
+                    sketch: options.sketch,
+                  })
+                )
+              );
+            }
           })
-          .on('end', () => {
-            dispose();
-            resolve();
-          });
-      }).finally(async () => await this.notifyUploadDidFinish(options))
+          .on('end', resolve);
+      }).finally(async () => {
+        handler.dispose();
+        await this.notifyUploadDidFinish(options);
+      })
     );
   }
 
@@ -212,31 +226,39 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
   async burnBootloader(options: CoreService.Bootloader.Options): Promise<void> {
     const coreClient = await this.coreClient();
     const { client, instance } = coreClient;
-    const { stderr, onDataHandler, dispose } = this.createOnDataHandler();
+    const handler = this.createOnDataHandler();
     const request = this.burnBootloaderRequest(options, instance);
     return this.notifyUploadWillStart(options).then(() =>
       new Promise<void>((resolve, reject) => {
         client
           .burnBootloader(request)
-          .on('data', onDataHandler)
+          .on('data', handler.onData)
           .on('error', (error) => {
-            dispose();
-            reject(
-              CoreError.BurnBootloaderFailed(
-                nls.localize(
-                  'arduino/burnBootloader/error',
-                  'Error while burning the bootloader: {0}',
-                  detailsOf(error)
-                ),
-                tryParseError({ content: stderr })
-              )
-            );
+            if (!ServiceError.is(error)) {
+              console.error(
+                'Unexpected error occurred while burning the bootloader.',
+                error
+              );
+              reject(error);
+            } else {
+              this.sendResponse(error.details, OutputMessage.Severity.Error);
+              reject(
+                CoreError.BurnBootloaderFailed(
+                  nls.localize(
+                    'arduino/burnBootloader/error',
+                    'Error while burning the bootloader: {0}',
+                    error.details
+                  ),
+                  tryParseError({ content: handler.stderr })
+                )
+              );
+            }
           })
-          .on('end', () => {
-            dispose();
-            resolve();
-          });
-      }).finally(async () => await this.notifyUploadDidFinish(options))
+          .on('end', resolve);
+      }).finally(async () => {
+        handler.dispose();
+        await this.notifyUploadDidFinish(options);
+      })
     );
   }
 
@@ -261,28 +283,32 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
 
   private createOnDataHandler<R extends StreamingResponse>(): Disposable & {
     stderr: Buffer[];
-    onDataHandler: (response: R) => void;
+    onData: (response: R) => void;
   } {
     const stderr: Buffer[] = [];
     const buffer = new SimpleBuffer((chunks) => {
       Array.from(chunks.entries()).forEach(([severity, chunk]) => {
         if (chunk) {
-          this.responseService.appendToOutput({ chunk, severity });
+          this.sendResponse(chunk, severity);
         }
       });
     });
-    const onDataHandler = StreamingResponse.createOnDataHandler(
-      stderr,
-      (out, err) => {
-        buffer.addChunk(out);
-        buffer.addChunk(err, OutputMessage.Severity.Error);
-      }
-    );
+    const onData = StreamingResponse.createOnDataHandler(stderr, (out, err) => {
+      buffer.addChunk(out);
+      buffer.addChunk(err, OutputMessage.Severity.Error);
+    });
     return {
       dispose: () => buffer.dispose(),
       stderr,
-      onDataHandler,
+      onData: onData,
     };
+  }
+
+  private sendResponse(
+    chunk: string,
+    severity: OutputMessage.Severity = OutputMessage.Severity.Info
+  ): void {
+    this.responseService.appendToOutput({ chunk, severity });
   }
 
   private async notifyUploadWillStart({
@@ -351,12 +377,4 @@ namespace StreamingResponse {
       onData(out, err);
     };
   }
-}
-
-function detailsOf(error: Error): string | undefined {
-  if ('details' in error) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (error as any).details;
-  }
-  return undefined;
 }
