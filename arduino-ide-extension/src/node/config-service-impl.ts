@@ -26,7 +26,6 @@ import { DefaultCliConfig, CLI_CONFIG } from './cli-config';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import { deepClone } from '@theia/core';
-import { duration } from '../common/decorators';
 
 const deepmerge = require('deepmerge');
 
@@ -126,7 +125,6 @@ export class ConfigServiceImpl
     return this.daemon.getVersion();
   }
 
-  @duration()
   protected async loadCliConfig(
     initializeIfAbsent = true
   ): Promise<DefaultCliConfig | undefined> {

@@ -25,7 +25,6 @@ import {
   ArchiveSketchRequest,
   LoadSketchRequest,
 } from './cli-protocol/cc/arduino/cli/commands/v1/commands_pb';
-import { duration } from '../common/decorators';
 import * as glob from 'glob';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 
@@ -71,7 +70,6 @@ export class SketchesServiceImpl
     return _new;
   }
 
-  @duration()
   async getSketchesNew({
     uri,
     exclude,

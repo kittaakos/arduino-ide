@@ -20,7 +20,6 @@ import {
   LibraryService,
 } from '../common/protocol';
 import { ConfigServiceImpl } from './config-service-impl';
-import { duration } from '../common/decorators';
 import { URI } from '@theia/core/lib/common/uri';
 import { Path } from '@theia/core/lib/common/path';
 
@@ -104,7 +103,6 @@ export class ExamplesServiceImpl implements ExamplesService {
     return this.builtInExamplesService.builtIns();
   }
 
-  @duration()
   async installed({ fqbn }: { fqbn?: string }): Promise<{
     user: SketchContainer[];
     current: SketchContainer[];
