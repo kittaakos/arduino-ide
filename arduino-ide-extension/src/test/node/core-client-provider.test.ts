@@ -85,8 +85,20 @@ directories:
     );
   });
 
-  it('should start if any 3rd party URL is invalid', async () => {
+  it('should start if not first start and any 3rd party URL is invalid', async () => {
     const tempConfigDir = track.mkdirSync();
+    // first start to install the Arduino package index and get the built-in serial discovery and others.
+    await assertCoreClientCanStart(
+      tempConfigDir,
+      `board_manager:
+  additional_urls: []
+directories:
+  data: ${join(tempConfigDir, 'Arduino15')}
+  downloads: ${join(tempConfigDir, 'Arduino15', 'staging')}
+  user: ${join(tempConfigDir, 'Arduino')}
+  `
+    );
+    // second start when the core requirements are already there
     await assertCoreClientCanStart(
       tempConfigDir,
       `board_manager:
