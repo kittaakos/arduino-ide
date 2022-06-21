@@ -66,6 +66,7 @@ const APP_STARTED_WITH_CONTENT_TRACE =
 
 @injectable()
 export class ElectronMainApplication extends TheiaElectronMainApplication {
+  private _firstWindowId: number | undefined;
   protected startup = false;
   protected openFilePromise = new Deferred();
 
@@ -330,6 +331,9 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
       electronWindow.webContents.openDevTools();
     }
     this.attachListenersToWindow(electronWindow);
+    if (this._firstWindowId === undefined) {
+      this._firstWindowId = electronWindow.id;
+    }
     return electronWindow;
   }
 
@@ -495,5 +499,9 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
 
   get browserWindows(): BrowserWindow[] {
     return Array.from(this.windows.values()).map(({ window }) => window);
+  }
+
+  get firstWindowId(): number | undefined {
+    return this.firstWindowId;
   }
 }

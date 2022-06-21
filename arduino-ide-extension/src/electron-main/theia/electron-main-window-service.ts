@@ -1,14 +1,21 @@
 import { inject, injectable } from '@theia/core/shared/inversify';
-import { ElectronMainWindowServiceImpl as TheiaElectronMainWindowService } from '@theia/core/lib/electron-main/electron-main-window-service-impl';
+import { ElectronMainWindowServiceImpl as TheiaElectronMainWindowServiceImpl } from '@theia/core/lib/electron-main/electron-main-window-service-impl';
 import { ElectronMainApplication } from './electron-main-application';
 import { NewWindowOptions } from '@theia/core/lib/common/window';
+import { ElectronMainWindowService } from '../../electron-common/theia/electron-main-window-service';
 
 @injectable()
-export class ElectronMainWindowServiceImpl extends TheiaElectronMainWindowService {
+export class ElectronMainWindowServiceImpl
+  extends TheiaElectronMainWindowServiceImpl
+  implements ElectronMainWindowService
+{
   @inject(ElectronMainApplication)
   protected override readonly app: ElectronMainApplication;
 
-  override openNewWindow(url: string, { external }: NewWindowOptions): undefined {
+  override openNewWindow(
+    url: string,
+    { external }: NewWindowOptions
+  ): undefined {
     if (!external) {
       const sanitizedUrl = this.sanitize(url);
       const existing = this.app.browserWindows.find(
@@ -20,6 +27,10 @@ export class ElectronMainWindowServiceImpl extends TheiaElectronMainWindowServic
       }
     }
     return super.openNewWindow(url, { external });
+  }
+
+  async isFirstInstance(id: number): Promise<boolean> {
+    return this.app.firstWindowId === id;
   }
 
   private sanitize(url: string): string {

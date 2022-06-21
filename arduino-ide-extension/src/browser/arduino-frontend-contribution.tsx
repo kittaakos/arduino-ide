@@ -76,6 +76,7 @@ import { IDEUpdaterDialog } from './dialogs/ide-updater/ide-updater-dialog';
 import { IDEUpdater } from '../common/protocol/ide-updater';
 import { FileSystemFrontendContribution } from '@theia/filesystem/lib/browser/filesystem-frontend-contribution';
 import { HostedPluginEvents } from './hosted-plugin-events';
+import { DefaultWindowService } from './theia/core/window-service';
 
 const INIT_LIBS_AND_PACKAGES = 'initializedLibsAndPackages';
 export const SKIP_IDE_VERSION = 'skipIDEVersion';
@@ -154,6 +155,9 @@ export class ArduinoFrontendContribution
 
   @inject(ArduinoDaemon)
   private readonly daemon: ArduinoDaemon;
+
+  @inject(DefaultWindowService)
+  private readonly windowService: DefaultWindowService;
 
   protected invalidConfigPopup:
     | Promise<void | 'No' | 'Yes' | undefined>
@@ -334,6 +338,10 @@ export class ArduinoFrontendContribution
         }
       }
     );
+    this.appStateService.reachedState('ready').then(async () => {
+      const first = await this.windowService.isFirstInstance();
+      console.log(`First instance?: ${first}`);
+    });
   }
 
   onStop(): void {

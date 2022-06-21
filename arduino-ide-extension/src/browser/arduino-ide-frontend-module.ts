@@ -298,6 +298,7 @@ import {
 } from '../common/protocol/survey-service';
 import { WindowContribution } from './theia/core/window-contribution';
 import { WindowContribution as TheiaWindowContribution } from '@theia/core/lib/browser/window-contribution';
+import { DefaultWindowService } from './theia/core/window-service';
 
 MonacoThemingService.register({
   id: 'arduino-theme',
@@ -610,6 +611,9 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   // To remove `New Window` from the `File` menu
   bind(WindowContribution).toSelf().inSingletonScope();
   rebind(TheiaWindowContribution).toService(WindowContribution);
+
+  // Extend the window service APIs
+  bind(DefaultWindowService).toSelf().inSingletonScope();
 
   bind(ArduinoDaemon)
     .toDynamicValue((context) =>
