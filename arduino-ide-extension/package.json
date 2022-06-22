@@ -157,9 +157,9 @@
   "arduino": {
     "cli": {
       "version": {
-        "owner": "arduino",
+        "owner": "cmaglie",
         "repo": "arduino-cli",
-        "commitish": "c1b10f562f1e1a112e215a69b84e2f2b69e3af2d"  
+        "commitish": "skip_lib_search_result"
       }
     },
     "fwuploader": {
