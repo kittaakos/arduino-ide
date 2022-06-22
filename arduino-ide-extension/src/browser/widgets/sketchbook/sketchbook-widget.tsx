@@ -45,6 +45,16 @@ export class SketchbookWidget extends BaseWidget {
     return this.localSketchbookTreeWidget;
   }
 
+  activateTreeWidget(treeWidgetId: string): boolean {
+    for (const widget of toArray(this.sketchbookTreesContainer.widgets())) {
+      if (widget.id === treeWidgetId) {
+        this.sketchbookTreesContainer.activateWidget(widget);
+        return true; // indicates success. maybe a void return type is also good.
+      }
+    }
+    return false;
+  }
+
   protected override onActivateRequest(message: Message): void {
     super.onActivateRequest(message);
 
