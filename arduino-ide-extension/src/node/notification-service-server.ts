@@ -1,5 +1,5 @@
 import { injectable } from '@theia/core/shared/inversify';
-import {
+import type {
   NotificationServiceServer,
   NotificationServiceClient,
   AttachedBoardsChangeEvent,
@@ -7,52 +7,67 @@ import {
   LibraryPackage,
   Config,
   Sketch,
+  ProgressMessage,
 } from '../common/protocol';
 
 @injectable()
 export class NotificationServiceServerImpl
   implements NotificationServiceServer
 {
-  protected readonly clients: NotificationServiceClient[] = [];
+  private readonly clients: NotificationServiceClient[] = [];
 
-  notifyIndexUpdated(): void {
-    this.clients.forEach((client) => client.notifyIndexUpdated());
+  notifyIndexWillUpdate(progressId: string): void {
+    this.clients.forEach((client) => client.notifyIndexWillUpdate(progressId));
   }
 
-  notifyDaemonStarted(port: string): void {
-    this.clients.forEach((client) => client.notifyDaemonStarted(port));
+  notifyIndexUpdateDidProgress(progressMessage: ProgressMessage): void {
+    this.clients.forEach((client) =>
+      client.notifyIndexUpdateDidProgress(progressMessage)
+    );
   }
 
-  notifyDaemonStopped(): void {
-    this.clients.forEach((client) => client.notifyDaemonStopped());
+  notifyIndexDidUpdate(progressId: string): void {
+    this.clients.forEach((client) => client.notifyIndexDidUpdate(progressId));
   }
 
-  notifyPlatformInstalled(event: { item: BoardsPackage }): void {
-    this.clients.forEach((client) => client.notifyPlatformInstalled(event));
+  notifyDaemonDidStart(port: string): void {
+    this.clients.forEach((client) => client.notifyDaemonDidStart(port));
   }
 
-  notifyPlatformUninstalled(event: { item: BoardsPackage }): void {
-    this.clients.forEach((client) => client.notifyPlatformUninstalled(event));
+  notifyDaemonDidStop(): void {
+    this.clients.forEach((client) => client.notifyDaemonDidStop());
   }
 
-  notifyLibraryInstalled(event: { item: LibraryPackage }): void {
-    this.clients.forEach((client) => client.notifyLibraryInstalled(event));
+  notifyPlatformDidInstall(event: { item: BoardsPackage }): void {
+    this.clients.forEach((client) => client.notifyPlatformDidInstall(event));
   }
 
-  notifyLibraryUninstalled(event: { item: LibraryPackage }): void {
-    this.clients.forEach((client) => client.notifyLibraryUninstalled(event));
+  notifyPlatformDidUninstall(event: { item: BoardsPackage }): void {
+    this.clients.forEach((client) => client.notifyPlatformDidUninstall(event));
   }
 
-  notifyAttachedBoardsChanged(event: AttachedBoardsChangeEvent): void {
-    this.clients.forEach((client) => client.notifyAttachedBoardsChanged(event));
+  notifyLibraryDidInstall(event: { item: LibraryPackage }): void {
+    this.clients.forEach((client) => client.notifyLibraryDidInstall(event));
   }
 
-  notifyConfigChanged(event: { config: Config | undefined }): void {
-    this.clients.forEach((client) => client.notifyConfigChanged(event));
+  notifyLibraryDidUninstall(event: { item: LibraryPackage }): void {
+    this.clients.forEach((client) => client.notifyLibraryDidUninstall(event));
   }
 
-  notifyRecentSketchesChanged(event: { sketches: Sketch[] }): void {
-    this.clients.forEach((client) => client.notifyRecentSketchesChanged(event));
+  notifyAttachedBoardsDidChange(event: AttachedBoardsChangeEvent): void {
+    this.clients.forEach((client) =>
+      client.notifyAttachedBoardsDidChange(event)
+    );
+  }
+
+  notifyConfigDidChange(event: { config: Config | undefined }): void {
+    this.clients.forEach((client) => client.notifyConfigDidChange(event));
+  }
+
+  notifyRecentSketchesDidChange(event: { sketches: Sketch[] }): void {
+    this.clients.forEach((client) =>
+      client.notifyRecentSketchesDidChange(event)
+    );
   }
 
   setClient(client: NotificationServiceClient): void {

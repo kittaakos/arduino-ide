@@ -302,6 +302,7 @@ import { CoreErrorHandler } from './contributions/core-error-handler';
 import { CompilerErrors } from './contributions/compiler-errors';
 import { WidgetManager } from './theia/core/widget-manager';
 import { WidgetManager as TheiaWidgetManager } from '@theia/core/lib/browser/widget-manager';
+import { IndexesUpdateProgress } from './contributions/indexes-update-progress';
 
 MonacoThemingService.register({
   id: 'arduino-theme',
@@ -698,6 +699,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   Contribution.configure(bind, PlotterFrontendContribution);
   Contribution.configure(bind, Format);
   Contribution.configure(bind, CompilerErrors);
+  Contribution.configure(bind, IndexesUpdateProgress);
 
   // Disabled the quick-pick customization from Theia when multiple formatters are available.
   // Use the default VS Code behavior, and pick the first one. In the IDE2, clang-format has `exclusive` selectors.

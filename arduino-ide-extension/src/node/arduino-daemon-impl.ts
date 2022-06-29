@@ -279,7 +279,7 @@ export class ArduinoDaemonImpl
     this._running = true;
     this._port.resolve(port);
     this.onDaemonStartedEmitter.fire(port);
-    this.notificationService.notifyDaemonStarted(port);
+    this.notificationService.notifyDaemonDidStart(port);
   }
 
   protected fireDaemonStopped(): void {
@@ -290,7 +290,7 @@ export class ArduinoDaemonImpl
     this._port.reject(); // Reject all pending.
     this._port = new Deferred<string>();
     this.onDaemonStoppedEmitter.fire();
-    this.notificationService.notifyDaemonStopped();
+    this.notificationService.notifyDaemonDidStop();
   }
 
   protected onData(message: string): void {

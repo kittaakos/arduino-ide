@@ -4,15 +4,14 @@ import {
   injectable,
   postConstruct,
 } from '@theia/core/shared/inversify';
-import { Event, Emitter } from '@theia/core/lib/common/event';
-import { GrpcClientProvider } from './grpc-client-provider';
+import { Emitter } from '@theia/core/lib/common/event';
 import { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
 import { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
 import {
   CreateRequest,
-  CreateResponse,
   InitRequest,
   InitResponse,
+  UpdateCoreLibrariesIndexResponse,
   UpdateIndexRequest,
   UpdateIndexResponse,
   UpdateLibrariesIndexRequest,
@@ -25,135 +24,159 @@ import {
   Status as RpcStatus,
   Status,
 } from './cli-protocol/google/rpc/status_pb';
+import { ConfigServiceImpl } from './config-service-impl';
+import { ArduinoDaemonImpl } from './arduino-daemon-impl';
+import { DisposableCollection, nls } from '@theia/core';
+import { Disposable } from '@theia/core/shared/vscode-languageserver-protocol';
+import { v4 } from 'uuid';
+import { InstallWithProgress } from './grpc-installable';
 
 @injectable()
-export class CoreClientProvider extends GrpcClientProvider<CoreClientProvider.Client> {
+export class CoreClientProvider {
+  @inject(ArduinoDaemonImpl)
+  private readonly daemon: ArduinoDaemonImpl;
+  @inject(ConfigServiceImpl)
+  private readonly configService: ConfigServiceImpl;
   @inject(NotificationServiceServer)
-  protected readonly notificationService: NotificationServiceServer;
+  private readonly notificationService: NotificationServiceServer;
 
-  protected readonly onClientReadyEmitter = new Emitter<void>();
+  private ready = new Deferred<void>();
+  private pending: Deferred<CoreClientProvider.Client> | undefined;
+  private _client: CoreClientProvider.Client | undefined;
+  private readonly toDisposeBeforeCreate = new DisposableCollection();
+  private readonly toDisposeAfterDidCreate = new DisposableCollection();
+  private readonly onClientReadyEmitter =
+    new Emitter<CoreClientProvider.Client>();
+  private readonly onClientReady = this.onClientReadyEmitter.event;
 
-  protected _created = new Deferred<void>();
-  protected _initialized = new Deferred<void>();
-
-  get created(): Promise<void> {
-    return this._created.promise;
+  @postConstruct()
+  protected init(): void {
+    this.daemon.getPort().then((port) => this.create(port));
+    this.daemon.onDaemonStopped(() => {
+      // TODO
+    });
+    this.configService.onConfigChange(async () => {
+      const port = await this.daemon.getPort();
+      this.create(port, 10); // Due to a config change, run the indexes update immediately.
+    });
   }
 
-  get initialized(): Promise<void> {
-    return this._initialized.promise;
+  get tryGetClient(): CoreClientProvider.Client | undefined {
+    return this._client;
   }
 
-  get onClientReady(): Event<void> {
-    return this.onClientReadyEmitter.event;
+  get client(): Promise<CoreClientProvider.Client> {
+    const client = this.tryGetClient;
+    if (client) {
+      return Promise.resolve(client);
+    }
+    if (!this.pending) {
+      this.pending = new Deferred();
+      this.toDisposeAfterDidCreate.pushAll([
+        Disposable.create(() => (this.pending = undefined)),
+        this.onClientReady((client) => {
+          this.pending?.resolve(client);
+          this.toDisposeAfterDidCreate.dispose();
+        }),
+      ]);
+    }
+    return this.pending.promise;
   }
 
-  close(client: CoreClientProvider.Client): void {
-    client.client.close();
-    this._created.reject();
-    this._initialized.reject();
-    this._created = new Deferred<void>();
-    this._initialized = new Deferred<void>();
-  }
+  /**
+   * Encapsulates both the gRPC core client creation (`CreateRequest`) and initialization (`InitRequest`).
+   */
+  private async create(
+    port: string,
+    indexesUpdateDelay = 10_000
+  ): Promise<CoreClientProvider.Client> {
+    this.toDisposeBeforeCreate.dispose();
+    const address = this.address(port);
+    const client = await this.createClient(address);
+    this.toDisposeBeforeCreate.pushAll([
+      Disposable.create(() => client.client.close()),
+      Disposable.create(() => {
+        this.ready.reject();
+        this.ready = new Deferred();
+      }),
+    ]);
+    // Normal startup workflow:
+    // 1. create instance,
+    // 2. init instance,
+    // 3. update indexes asynchronously.
 
-  protected override async reconcileClient(port: string): Promise<void> {
-    if (port && port === this._port) {
-      // No need to create a new gRPC client, but we have to update the indexes.
-      if (this._client && !(this._client instanceof Error)) {
-        await this.updateIndexes(this._client);
-        this.onClientReadyEmitter.fire();
+    // First startup workflow:
+    // 1. create instance,
+    // 2. update indexes and wait (to download the built-in pluggable tools, etc),
+    // 3. init instance.
+    try {
+      await this.initInstance(client); // init the gRPC core client instance
+      setTimeout(() => this.updateIndexes(client), indexesUpdateDelay); // Update the indexes asynchronously
+      return this.useClient(client);
+    } catch (error) {
+      console.error(
+        'Error occurred while initializing the core gRPC client provider',
+        error
+      );
+      if (error instanceof IndexUpdateRequiredBeforeInitError) {
+        // If it's a first start, IDE2 must run index update before the init request.
+        await this.updateIndexes(client);
+        await this.initInstance(client);
+        return this.useClient(client);
+      } else {
+        throw error;
       }
-    } else {
-      await super.reconcileClient(port);
-      this.onClientReadyEmitter.fire();
     }
   }
 
-  @postConstruct()
-  protected override init(): void {
-    this.daemon.getPort().then(async (port) => {
-      // First create the client and the instance synchronously
-      // and notify client is ready.
-      // TODO: Creation failure should probably be handled here
-      await this.reconcileClient(port); // create instance
-      this._created.resolve();
-
-      // Normal startup workflow:
-      // 1. create instance,
-      // 2. init instance,
-      // 3. update indexes asynchronously.
-
-      // First startup workflow:
-      // 1. create instance,
-      // 2. update indexes and wait,
-      // 3. init instance.
-      if (this._client && !(this._client instanceof Error)) {
-        try {
-          await this.initInstance(this._client); // init instance
-          this._initialized.resolve();
-          this.updateIndex(this._client); // Update the indexes asynchronously
-        } catch (error: unknown) {
-          console.error(
-            'Error occurred while initializing the core gRPC client provider',
-            error
-          );
-          if (error instanceof IndexUpdateRequiredBeforeInitError) {
-            // If it's a first start, IDE2 must run index update before the init request.
-            await this.updateIndexes(this._client);
-            await this.initInstance(this._client);
-            this._initialized.resolve();
-          } else {
-            throw error;
-          }
-        }
-      }
-    });
-
-    this.daemon.onDaemonStopped(() => {
-      if (this._client && !(this._client instanceof Error)) {
-        this.close(this._client);
-      }
-      this._client = undefined;
-      this._port = undefined;
-    });
+  private async useClient(
+    client: CoreClientProvider.Client
+  ): Promise<CoreClientProvider.Client> {
+    // TODO: why async? -> for local testing and `wait`
+    this._client = client;
+    this.onClientReadyEmitter.fire(this._client);
+    return this._client;
   }
 
-  protected async createClient(
-    port: string | number
+  private async createClient(
+    address: string
   ): Promise<CoreClientProvider.Client> {
     // https://github.com/agreatfool/grpc_tools_node_protoc_ts/blob/master/doc/grpcjs_support.md#usage
     const ArduinoCoreServiceClient = grpc.makeClientConstructor(
       // @ts-expect-error: ignore
       commandsGrpcPb['cc.arduino.cli.commands.v1.ArduinoCoreService'],
       'ArduinoCoreServiceService'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ) as any;
     const client = new ArduinoCoreServiceClient(
-      `localhost:${port}`,
+      address,
       grpc.credentials.createInsecure(),
       this.channelOptions
     ) as ArduinoCoreServiceClient;
 
-    const createRes = await new Promise<CreateResponse>((resolve, reject) => {
-      client.create(new CreateRequest(), (err, res: CreateResponse) => {
+    const instance = await new Promise<Instance>((resolve, reject) => {
+      client.create(new CreateRequest(), (err, resp) => {
         if (err) {
           reject(err);
           return;
         }
-        resolve(res);
+        const instance = resp.getInstance();
+        if (!instance) {
+          reject(
+            new Error(
+              'Could not retrieve instance from the initialize response.'
+            )
+          );
+          return;
+        }
+        resolve(instance);
       });
     });
-
-    const instance = createRes.getInstance();
-    if (!instance) {
-      throw new Error(
-        'Could not retrieve instance from the initialize response.'
-      );
-    }
 
     return { instance, client };
   }
 
-  protected async initInstance({
+  private async initInstance({
     client,
     instance,
   }: CoreClientProvider.Client): Promise<void> {
@@ -203,85 +226,122 @@ export class CoreClientProvider extends GrpcClientProvider<CoreClientProvider.Cl
     return error;
   }
 
-  protected async updateIndexes(
+  private async updateIndexes(
     client: CoreClientProvider.Client
   ): Promise<CoreClientProvider.Client> {
+    const progressId = v4();
+    // Note: at this point, the IDE2 backend might not have any connected clients, so this notification is not delivered to anywhere
+    // Hence, clients must handle gracefully when no `willUpdate` is received only `didProgress`.
+    this.notificationService.notifyIndexWillUpdate(progressId);
+    const message = nls.localize(
+      'arduino/updateIndex/progress',
+      'Updating indexes'
+    );
+    let work = {
+      done: 0,
+      total: 2,
+    };
+    const reportProgress = () => {
+      work = {
+        ...work,
+        done: work.done + 1,
+      };
+      this.notificationService.notifyIndexUpdateDidProgress({
+        message,
+        progressId,
+        work,
+      });
+    };
     await Promise.all([
-      retry(() => this.updateIndex(client), 50, 3),
-      retry(() => this.updateLibraryIndex(client), 50, 3),
+      retry(() => this.updateIndex(client, progressId), 50, 3).then(
+        reportProgress
+      ),
+      retry(() => this.updateLibraryIndex(client, progressId), 50, 3).then(
+        reportProgress
+      ),
     ]);
-    this.notificationService.notifyIndexUpdated();
+    this.notificationService.notifyIndexDidUpdate(progressId);
     return client;
   }
 
-  protected async updateLibraryIndex({
-    client,
-    instance,
-  }: CoreClientProvider.Client): Promise<void> {
-    const req = new UpdateLibrariesIndexRequest();
-    req.setInstance(instance);
-    const resp = client.updateLibrariesIndex(req);
-    let file: string | undefined;
-    resp.on('data', (data: UpdateLibrariesIndexResponse) => {
-      const progress = data.getDownloadProgress();
-      if (progress) {
-        if (!file && progress.getFile()) {
-          file = `${progress.getFile()}`;
-        }
-        if (progress.getCompleted()) {
-          if (file) {
-            if (/\s/.test(file)) {
-              console.log(`${file} completed.`);
-            } else {
-              console.log(`Download of '${file}' completed.`);
-            }
-          } else {
-            console.log('The library index has been successfully updated.');
-          }
-          file = undefined;
-        }
-      }
-    });
-    await new Promise<void>((resolve, reject) => {
-      resp.on('error', (error) => {
-        reject(error);
-      });
-      resp.on('end', resolve);
+  private async updateIndex(
+    client: CoreClientProvider.Client,
+    progressId: string
+  ): Promise<void> {
+    return this.doUpdateIndex(
+      () =>
+        client.client.updateIndex(
+          new UpdateIndexRequest().setInstance(client.instance)
+        ),
+      progressId
+    );
+  }
+
+  private async updateLibraryIndex(
+    client: CoreClientProvider.Client,
+    progressId: string
+  ): Promise<void> {
+    return this.doUpdateIndex(
+      () =>
+        client.client.updateLibrariesIndex(
+          new UpdateLibrariesIndexRequest().setInstance(client.instance)
+        ),
+      progressId
+    );
+  }
+
+  private async doUpdateIndex<
+    R extends
+      | UpdateIndexResponse
+      | UpdateLibrariesIndexResponse
+      | UpdateCoreLibrariesIndexResponse // not used by IDE2
+  >(
+    responseProvider: () => grpc.ClientReadableStream<R>,
+    progressId: string
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      responseProvider()
+        .on(
+          'data',
+          InstallWithProgress.createDataCallback({
+            responseService: {
+              appendToOutput: (message) => {
+                console.log('core-client-provider', message.chunk);
+              },
+            },
+            progressId,
+          })
+        )
+        .on('error', reject)
+        .on('end', resolve);
     });
   }
 
-  protected async updateIndex({
-    client,
-    instance,
-  }: CoreClientProvider.Client): Promise<void> {
-    const updateReq = new UpdateIndexRequest();
-    updateReq.setInstance(instance);
-    const updateResp = client.updateIndex(updateReq);
-    let file: string | undefined;
-    updateResp.on('data', (o: UpdateIndexResponse) => {
-      const progress = o.getDownloadProgress();
-      if (progress) {
-        if (!file && progress.getFile()) {
-          file = `${progress.getFile()}`;
-        }
-        if (progress.getCompleted()) {
-          if (file) {
-            if (/\s/.test(file)) {
-              console.log(`${file} completed.`);
-            } else {
-              console.log(`Download of '${file}' completed.`);
-            }
-          } else {
-            console.log('The index has been successfully updated.');
-          }
-          file = undefined;
-        }
-      }
-    });
-    await new Promise<void>((resolve, reject) => {
-      updateResp.on('error', reject);
-      updateResp.on('end', resolve);
-    });
+  private address(port: string): string {
+    return `localhost:${port}`;
+  }
+
+  private get channelOptions(): Record<string, unknown> {
+    return {
+      'grpc.max_send_message_length': 512 * 1024 * 1024,
+      'grpc.max_receive_message_length': 512 * 1024 * 1024,
+      'grpc.primary_user_agent': `arduino-ide/${this.version}`,
+    };
+  }
+
+  private _version: string | undefined;
+  private get version(): string {
+    if (this._version) {
+      return this._version;
+    }
+    const json = require('../../package.json');
+    if ('version' in json) {
+      this._version = json.version;
+    }
+    if (!this._version) {
+      this._version = '0.0.0';
+    }
+    return this._version;
   }
 }
 export namespace CoreClientProvider {
@@ -291,22 +351,18 @@ export namespace CoreClientProvider {
   }
 }
 
+/**
+ * Sugar for making the gRPC core client available for the concrete service classes.
+ */
 @injectable()
 export abstract class CoreClientAware {
   @inject(CoreClientProvider)
-  protected readonly coreClientProvider: CoreClientProvider;
-
-  protected async coreClient(): Promise<CoreClientProvider.Client> {
-    return await new Promise<CoreClientProvider.Client>(
-      async (resolve, reject) => {
-        const client = await this.coreClientProvider.client();
-        if (client && client instanceof Error) {
-          reject(client);
-        } else if (client) {
-          return resolve(client);
-        }
-      }
-    );
+  private readonly coreClientProvider: CoreClientProvider;
+  /**
+   * Returns with a promise that resolves when the core client is initialized and ready.
+   */
+  protected get coreClient(): Promise<CoreClientProvider.Client> {
+    return this.coreClientProvider.client;
   }
 }
 
