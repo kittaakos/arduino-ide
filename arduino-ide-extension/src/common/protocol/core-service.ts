@@ -1,4 +1,4 @@
-import { ApplicationError } from '@theia/core';
+import { ApplicationError } from '@theia/core/lib/common/application-error';
 import { Location } from '@theia/core/shared/vscode-languageserver-protocol';
 import { BoardUserField } from '.';
 import { Board, Port } from '../../common/protocol/boards-service';
