@@ -80,7 +80,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
             reject(error);
           } else {
             const compilerErrors = tryParseError({
-              content: handler.stderr,
+              content: handler.content,
               sketch: options.sketch,
             });
             const message = nls.localize(
@@ -234,7 +234,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
                 errorHandler(
                   message,
                   tryParseError({
-                    content: handler.stderr,
+                    content: handler.content,
                     sketch: options.sketch,
                   })
                 )
@@ -301,7 +301,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
                     'Error while burning the bootloader: {0}',
                     error.details
                   ),
-                  tryParseError({ content: handler.stderr })
+                  tryParseError({ content: handler.content })
                 )
               );
             }
@@ -336,10 +336,10 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
   private createOnDataHandler<R extends StreamingResponse>(
     onResponse?: (response: R) => void
   ): Disposable & {
-    stderr: Buffer[];
+    content: Buffer[];
     onData: (response: R) => void;
   } {
-    const stderr: Buffer[] = [];
+    const content: Buffer[] = [];
     const buffer = new AutoFlushingBuffer((chunks) => {
       Array.from(chunks.entries()).forEach(([severity, chunk]) => {
         if (chunk) {
@@ -348,7 +348,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
       });
     });
     const onData = StreamingResponse.createOnDataHandler(
-      stderr,
+      content,
       (out, err) => {
         buffer.addChunk(out);
         buffer.addChunk(err, OutputMessage.Severity.Error);
@@ -357,7 +357,7 @@ export class CoreServiceImpl extends CoreClientAware implements CoreService {
     );
     return {
       dispose: () => buffer.dispose(),
-      stderr,
+      content,
       onData,
     };
   }
@@ -422,14 +422,19 @@ type StreamingResponse =
 namespace StreamingResponse {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   export function createOnDataHandler<R extends StreamingResponse>(
-    stderr: Uint8Array[],
+    content: Uint8Array[],
     onData: (out: Uint8Array, err: Uint8Array) => void,
     onResponse?: (response: R) => void
   ): (response: R) => void {
     return (response: R) => {
       const out = response.getOutStream_asU8();
+      if (out.length) {
+        content.push(out);
+      }
       const err = response.getErrStream_asU8();
-      stderr.push(err);
+      if (err.length) {
+        content.push(err);
+      }
       onData(out, err);
       if (onResponse) {
         onResponse(response);

@@ -28,14 +28,15 @@ import * as monaco from '@theia/monaco-editor-core';
 import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
 import { MonacoToProtocolConverter } from '@theia/monaco/lib/browser/monaco-to-protocol-converter';
 import { ProtocolToMonacoConverter } from '@theia/monaco/lib/browser/protocol-to-monaco-converter';
+import { OutputUri } from '@theia/output/lib/common/output-uri';
 import { CoreError } from '../../common/protocol/core-service';
 import { ErrorRevealStrategy } from '../arduino-preferences';
-import { InoSelector } from '../ino-selectors';
+import { ArduinoOutputSelector, InoSelector } from '../selectors';
 import { fullRange } from '../utils/monaco';
 import { Contribution } from './contribution';
 import { CoreErrorHandler } from './core-error-handler';
 
-interface ErrorDecoration {
+interface ErrorDecorationRef {
   /**
    * This is the unique ID of the decoration given by `monaco`.
    */
@@ -45,17 +46,59 @@ interface ErrorDecoration {
    */
   readonly uri: string;
 }
+export namespace ErrorDecorationRef {
+  export function revive(maybeUri: string): ErrorDecorationRef | undefined {
+    let uri: URI | undefined = undefined;
+    try {
+      uri = new URI(maybeUri);
+    } catch {}
+    if (!uri) {
+      return undefined;
+    }
+    const id = uri.path.toString();
+    if (!id) {
+      return undefined;
+    }
+    return { uri: uri.withoutPath().toString(), id };
+  }
+  export function is(arg: unknown): arg is ErrorDecorationRef {
+    if (typeof arg === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const object = arg as any;
+      return (
+        'uri' in object &&
+        typeof object['uri'] === 'string' &&
+        'id' in object &&
+        typeof object['id'] === 'string'
+      );
+    }
+    return false;
+  }
+  export function sameAs(
+    left: ErrorDecorationRef,
+    right: ErrorDecorationRef
+  ): boolean {
+    return left.id === right.id && left.uri === right.uri;
+  }
+}
+
+interface ErrorDecoration extends ErrorDecorationRef {
+  /**
+   * The range of the error location the error in the compiler output from the CLI.
+   */
+  readonly rangesInSource: monaco.Range[];
+}
 namespace ErrorDecoration {
   export function rangeOf(
-    { id, uri }: ErrorDecoration,
+    { id, uri, rangesInSource: rangeInSource }: ErrorDecoration,
     editorProvider: (uri: string) => Promise<MonacoEditor | undefined>
   ): Promise<monaco.Range | undefined>;
   export function rangeOf(
-    { id, uri }: ErrorDecoration,
+    { id, uri, rangesInSource: rangeInSource }: ErrorDecoration,
     editorProvider: MonacoEditor
   ): monaco.Range | undefined;
   export function rangeOf(
-    { id, uri }: ErrorDecoration,
+    { id, uri, rangesInSource: rangeInSource }: ErrorDecoration,
     editorProvider:
       | ((uri: string) => Promise<MonacoEditor | undefined>)
       | MonacoEditor
@@ -72,45 +115,22 @@ namespace ErrorDecoration {
     }
     return editorProvider(uri).then((editor) => {
       if (editor) {
-        return rangeOf({ id, uri }, editor);
+        return rangeOf({ id, uri, rangesInSource: rangeInSource }, editor);
       }
       return undefined;
     });
   }
-
-  // export async function rangeOf(
-  //   { id, uri }: ErrorDecoration,
-  //   editorProvider:
-  //     | ((uri: string) => Promise<MonacoEditor | undefined>)
-  //     | MonacoEditor
-  // ): Promise<monaco.Range | undefined> {
-  //   const editor =
-  //     editorProvider instanceof MonacoEditor
-  //       ? editorProvider
-  //       : await editorProvider(uri);
-  //   if (editor) {
-  //     const control = editor.getControl();
-  //     const model = control.getModel();
-  //     if (model) {
-  //       return control
-  //         .getDecorationsInRange(fullRange(model))
-  //         ?.find(({ id: candidateId }) => id === candidateId)?.range;
-  //     }
-  //   }
-  //   return undefined;
-  // }
-  export function sameAs(
-    left: ErrorDecoration,
-    right: ErrorDecoration
-  ): boolean {
-    return left.id === right.id && left.uri === right.uri;
+  export function hasRangeInSource(
+    error: ErrorDecoration
+  ): error is ErrorDecoration & { rangeInSource: monaco.Range } {
+    return !!error.rangesInSource;
   }
 }
 
 @injectable()
 export class CompilerErrors
   extends Contribution
-  implements monaco.languages.CodeLensProvider
+  implements monaco.languages.CodeLensProvider, monaco.languages.LinkProvider
 {
   @inject(EditorManager)
   private readonly editorManager: EditorManager;
@@ -124,6 +144,9 @@ export class CompilerErrors
   @inject(CoreErrorHandler)
   private readonly coreErrorHandler: CoreErrorHandler;
 
+  private revealStrategy = ErrorRevealStrategy.Default;
+  private experimental = false;
+
   private readonly errors: ErrorDecoration[] = [];
   private readonly onDidChangeEmitter = new monaco.Emitter<this>();
   private readonly currentErrorDidChangEmitter = new Emitter<ErrorDecoration>();
@@ -131,8 +154,8 @@ export class CompilerErrors
     this.currentErrorDidChangEmitter.event;
   private readonly toDisposeOnCompilerErrorDidChange =
     new DisposableCollection();
+
   private shell: ApplicationShell | undefined;
-  private revealStrategy = ErrorRevealStrategy.Default;
   private currentError: ErrorDecoration | undefined;
   private get currentErrorIndex(): number {
     const current = this.currentError;
@@ -140,15 +163,16 @@ export class CompilerErrors
       return -1;
     }
     return this.errors.findIndex((error) =>
-      ErrorDecoration.sameAs(error, current)
+      ErrorDecorationRef.sameAs(error, current)
     );
   }
 
   override onStart(app: FrontendApplication): void {
     this.shell = app.shell;
     monaco.languages.registerCodeLensProvider(InoSelector, this);
+    monaco.languages.registerLinkProvider(ArduinoOutputSelector, this);
     this.coreErrorHandler.onCompilerErrorsDidChange((errors) =>
-      this.filter(errors).then(this.handleCompilerErrorsDidChange.bind(this))
+      this.handleCompilerErrorsDidChange(errors)
     );
     this.onCurrentErrorDidChange(async (error) => {
       const range = await ErrorDecoration.rangeOf(error, (uri) =>
@@ -161,25 +185,54 @@ export class CompilerErrors
         );
         return;
       }
+      const monacoRange = this.mp2.asRange(range);
       const editor = await this.revealLocationInEditor({
         uri: error.uri,
-        range: this.mp2.asRange(range),
+        range: monacoRange,
       });
       if (!editor) {
         console.warn(
           'compiler-errors',
           `Failed to mark error ${error.id} as the current one.`
         );
+      } else {
+        const monacoEditor = this.monacoEditor(editor);
+        if (monacoEditor) {
+          monacoEditor.cursor = monacoRange.start;
+        }
       }
     });
+  }
+
+  override onReady(): MaybePromise<void> {
     this.preferences.ready.then(() => {
-      this.preferences.onPreferenceChanged(({ preferenceName, newValue }) => {
-        if (preferenceName === 'arduino.compile.revealRange') {
-          this.revealStrategy = ErrorRevealStrategy.is(newValue)
-            ? newValue
-            : ErrorRevealStrategy.Default;
+      this.experimental = Boolean(
+        this.preferences['arduino.compile.experimental']
+      );
+      const strategy = this.preferences['arduino.compile.revealRange'];
+      this.revealStrategy = ErrorRevealStrategy.is(strategy)
+        ? strategy
+        : ErrorRevealStrategy.Default;
+      this.preferences.onPreferenceChanged(
+        ({ preferenceName, newValue, oldValue }) => {
+          if (newValue === oldValue) {
+            return;
+          }
+          switch (preferenceName) {
+            case 'arduino.compile.revealRange': {
+              this.revealStrategy = ErrorRevealStrategy.is(newValue)
+                ? newValue
+                : ErrorRevealStrategy.Default;
+              return;
+            }
+            case 'arduino.compile.experimental': {
+              this.experimental = Boolean(newValue);
+              this.onDidChangeEmitter.fire(this);
+              return;
+            }
+          }
         }
-      });
+      );
     });
   }
 
@@ -198,7 +251,8 @@ export class CompilerErrors
           this.errors[index === this.errors.length - 1 ? 0 : index + 1];
         this.markAsCurrentError(nextError);
       },
-      isEnabled: () => !!this.currentError && this.errors.length > 1,
+      isEnabled: () =>
+        this.experimental && !!this.currentError && this.errors.length > 1,
     });
     registry.registerCommand(CompilerErrors.Commands.PREVIOUS_ERROR, {
       execute: () => {
@@ -214,7 +268,16 @@ export class CompilerErrors
           this.errors[index === 0 ? this.errors.length - 1 : index - 1];
         this.markAsCurrentError(previousError);
       },
-      isEnabled: () => !!this.currentError && this.errors.length > 1,
+      isEnabled: () =>
+        this.experimental && !!this.currentError && this.errors.length > 1,
+    });
+    registry.registerCommand(CompilerErrors.Commands.MARK_AS_CURRENT, {
+      execute: (arg: unknown) => {
+        if (ErrorDecorationRef.is(arg)) {
+          this.markAsCurrentError(arg, true);
+        }
+      },
+      isEnabled: () => !!this.errors.length,
     });
   }
 
@@ -229,6 +292,7 @@ export class CompilerErrors
   ): Promise<monaco.languages.CodeLensList> {
     const lenses: monaco.languages.CodeLens[] = [];
     if (
+      this.experimental &&
       this.currentError &&
       this.currentError.uri === model.uri.toString() &&
       this.errors.length > 1
@@ -268,13 +332,78 @@ export class CompilerErrors
     };
   }
 
+  async provideLinks(
+    model: monaco.editor.ITextModel,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _token: monaco.CancellationToken
+  ): Promise<monaco.languages.ILinksList> {
+    const links: monaco.languages.ILink[] = [];
+    if (
+      model.uri.scheme === OutputUri.SCHEME &&
+      model.uri.path === '/Arduino'
+    ) {
+      links.push(
+        ...this.errors
+          .filter(ErrorDecoration.hasRangeInSource)
+          .map(({ rangesInSource, id, uri }) =>
+            rangesInSource.map(
+              (range) =>
+                <monaco.languages.ILink>{
+                  range,
+                  url: monaco.Uri.parse(`command://`).with({
+                    query: JSON.stringify({ id, uri }),
+                    path: CompilerErrors.Commands.MARK_AS_CURRENT.id,
+                  }),
+                  tooltip: nls.localize(
+                    'arduino/editor/revealError',
+                    'Reveal Error'
+                  ),
+                }
+            )
+          )
+          .reduce((acc, curr) => acc.concat(curr), [])
+      );
+    } else {
+      console.warn('unexpected URI: ' + model.uri.toString());
+    }
+    return { links };
+  }
+
+  async resolveLink(
+    link: monaco.languages.ILink,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _token: monaco.CancellationToken
+  ): Promise<monaco.languages.ILink | undefined> {
+    if (!this.experimental) {
+      return undefined;
+    }
+    const { url } = link;
+    if (url) {
+      const candidateUri = new URI(
+        typeof url === 'string' ? url : url.toString()
+      );
+      const candidateId = candidateUri.path.toString();
+      const error = this.errors.find((error) => error.id === candidateId);
+      if (error) {
+        const range = await ErrorDecoration.rangeOf(error, (uri) =>
+          this.monacoEditor(uri)
+        );
+        if (range) {
+          return {
+            range,
+            url: monaco.Uri.parse(error.uri),
+          };
+        }
+      }
+    }
+    return undefined;
+  }
+
   private async handleCompilerErrorsDidChange(
     errors: CoreError.ErrorLocation[]
   ): Promise<void> {
     this.toDisposeOnCompilerErrorDidChange.dispose();
-    const compilerErrorsPerResource = this.groupByResource(
-      await this.filter(errors)
-    );
+    const compilerErrorsPerResource = this.groupByResource(errors);
     const decorations = await this.decorateEditors(compilerErrorsPerResource);
     this.errors.push(...decorations.errors);
     this.toDisposeOnCompilerErrorDidChange.pushAll([
@@ -303,20 +432,6 @@ export class CompilerErrors
     if (currentError) {
       await this.markAsCurrentError(currentError);
     }
-  }
-
-  private async filter(
-    errors: CoreError.ErrorLocation[]
-  ): Promise<CoreError.ErrorLocation[]> {
-    if (!errors.length) {
-      return [];
-    }
-    await this.preferences.ready;
-    if (this.preferences['arduino.compile.experimental']) {
-      return errors;
-    }
-    // Always shows maximum one error; hence the code lens navigation is unavailable.
-    return [errors[0]];
   }
 
   private async decorateEditors(
@@ -361,7 +476,13 @@ export class CompilerErrors
           });
         }
       }),
-      errors: oldDecorations.map((id) => ({ id, uri })),
+      errors: oldDecorations.map((id, index) => ({
+        id,
+        uri,
+        rangesInSource: errors[index].rangesInSource.map((range) =>
+          this.p2m.asRange(range)
+        ),
+      })),
     };
   }
 
@@ -371,7 +492,7 @@ export class CompilerErrors
       options: {
         isWholeLine: true,
         className: 'compiler-error',
-        stickiness: TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
+        stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
       },
     };
   }
@@ -501,7 +622,7 @@ export class CompilerErrors
       .map(({ range }) => this.p2m.asRange(range))
       .map((changeRange) =>
         resolvedMarkers.filter(({ range: decorationRange }) =>
-          changeRange.containsRange(decorationRange)
+          changeRange.strictContainsRange(decorationRange)
         )
       )
       .reduce((acc, curr) => acc.concat(curr), [])
@@ -533,15 +654,18 @@ export class CompilerErrors
     );
   }
 
-  private async markAsCurrentError(error: ErrorDecoration): Promise<void> {
+  private async markAsCurrentError(
+    ref: ErrorDecorationRef,
+    forceReselect = false
+  ): Promise<void> {
     const index = this.errors.findIndex((candidate) =>
-      ErrorDecoration.sameAs(candidate, error)
+      ErrorDecorationRef.sameAs(candidate, ref)
     );
     if (index < 0) {
       console.warn(
         'compiler-errors',
         `Failed to mark error ${
-          error.id
+          ref.id
         } as the current one. Error is unknown. Known errors are: ${this.errors.map(
           ({ id }) => id
         )}`
@@ -550,8 +674,9 @@ export class CompilerErrors
     }
     const newError = this.errors[index];
     if (
+      forceReselect ||
       !this.currentError ||
-      !ErrorDecoration.sameAs(this.currentError, newError)
+      !ErrorDecorationRef.sameAs(this.currentError, newError)
     ) {
       this.currentError = this.errors[index];
       console.log(
@@ -645,6 +770,9 @@ export namespace CompilerErrors {
     };
     export const PREVIOUS_ERROR: Command = {
       id: 'arduino-editor-previous-error',
+    };
+    export const MARK_AS_CURRENT: Command = {
+      id: 'arduino-editor-mark-as-current-error',
     };
   }
 }
