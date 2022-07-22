@@ -35,6 +35,9 @@ export class SettingsWidget extends ReactWidget {
   @inject(AsyncLocalizationProvider)
   protected readonly localizationProvider: AsyncLocalizationProvider;
 
+  @inject(ThemeService)
+  private readonly themeService: ThemeService;
+
   protected render(): React.ReactNode {
     return (
       <SettingsComponent
@@ -43,6 +46,7 @@ export class SettingsWidget extends ReactWidget {
         fileDialogService={this.fileDialogService}
         windowService={this.windowService}
         localizationProvider={this.localizationProvider}
+        themeService={this.themeService}
       />
     );
   }
