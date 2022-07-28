@@ -137,7 +137,7 @@ describe('reconcileSettings', () => {
 
     expect(reconciledSettings).not.to.have.property('setting4');
   });
-  it('should reset non-value fields to those defiend in the default settings', async () => {
+  it('should reset non-value fields to those defined in the default settings', async () => {
     const newSettings: DeepWriteable<PluggableMonitorSettings> = JSON.parse(
       JSON.stringify(defaultSettings)
     );
@@ -161,7 +161,7 @@ describe('reconcileSettings', () => {
       .to.have.property('selectedValue')
       .to.equal('c');
   });
-  it('should fall a back to the first valid setting when the selectedValue is not valid', async () => {
+  it('should fall back to the first valid setting when the selectedValue is not valid', async () => {
     const newSettings: PluggableMonitorSettings = JSON.parse(
       JSON.stringify(defaultSettings)
     );
