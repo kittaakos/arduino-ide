@@ -19,6 +19,7 @@ import {
 import {
   BoardListWatchRequest,
   BoardListWatchResponse,
+  BoardListItem,
   DetectedPort as RpcDetectedPort,
 } from './cli-protocol/cc/arduino/cli/commands/v1/board_pb';
 import { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
@@ -248,6 +249,7 @@ export class BoardDiscovery
     this.logger.info('start resolved watching');
   }
 
+  private mockedAddress: string | undefined;
   // XXX: make this `protected` and override for tests if IDE2 wants to mock events from the CLI.
   private onBoardListWatchResponse(resp: BoardListWatchResponse): void {
     this.logger.info(this.toJson(resp));
@@ -259,7 +261,69 @@ export class BoardDiscovery
       return;
     }
 
-    const detectedPort = resp.getPort();
+    // {
+    //   "matching_boards": [
+    //     {
+    //       "name": "Teensy 4.1",
+    //       "fqbn": "teensy:avr:teensy41"
+    //     }
+    //   ],
+    //   "port": {
+    //     "address": "usb:0/1A0000/0/1/5/1/1/3",
+    //     "label": "hid#vid_16c0\u0026pid_0486 RawHID",
+    //     "protocol": "teensy",
+    //     "protocol_label": "Teensy Ports",
+    //     "properties": {
+    //       "modelID": "0x25",
+    //       "name": "Teensy 4.1",
+    //       "serialNumber": "808372",
+    //       "usbtype": "USB_RAWHID"
+    //     }
+    //   }
+    // }
+    let detectedPort = resp.getPort();
+    if (detectedPort) {
+      if (
+        eventType === EventType.Add &&
+        detectedPort.getPort()?.getAddress() === '/dev/cu.usbmodem14301' &&
+        detectedPort.getMatchingBoardsList().length === 1 &&
+        detectedPort.getMatchingBoardsList()[0].getFqbn() ===
+          'arduino:samd:mkr1000'
+      ) {
+        this.mockedAddress = detectedPort.getPort()?.getAddress();
+        detectedPort = new RpcDetectedPort();
+        const port = new RpcPort()
+          .setAddress('usb:0/1A0000/0/1/5/1/1/3')
+          .setLabel('hid#vid_16c0\u0026pid_0486 RawHID')
+          .setProtocol('teensy')
+          .setProtocolLabel('Teensy Ports');
+        port
+          .getPropertiesMap()
+          .set('modelID', '0x25')
+          .set('name', 'Teensy 4.1')
+          .set('serialNumber', '808372')
+          .set('usbtype', 'USB_RAWHID');
+        detectedPort
+          .setPort(port)
+          .setMatchingBoardsList([
+            new BoardListItem()
+              .setIsHidden(false)
+              .setName('Teensy 4.1')
+              .setFqbn('teensy:avr:teensy41'),
+          ]);
+      } else if (
+        this.mockedAddress &&
+        this.mockedAddress === detectedPort.getPort()?.getAddress()
+      ) {
+        detectedPort = new RpcDetectedPort();
+        detectedPort.setPort(
+          new RpcPort()
+            .setAddress('usb:0/1A0000/0/1/5/1/1/3')
+            .setProtocol('teensy')
+        );
+        this.mockedAddress = undefined;
+      }
+    }
     if (detectedPort) {
       const { port, boards } = this.fromRpc(detectedPort);
       if (!port) {
