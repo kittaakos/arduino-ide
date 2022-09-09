@@ -11,6 +11,7 @@ import type {
 } from '../../common/protocol/boards-service';
 import type { Programmer } from './boards-service';
 import type { Sketch } from './sketches-service';
+import { IndexUpdateSummary } from './notification-service';
 
 export const CompilerWarningLiterals = [
   'None',
@@ -108,6 +109,29 @@ export interface CoreService {
   compile(options: CoreService.Options.Compile): Promise<void>;
   upload(options: CoreService.Options.Upload): Promise<void>;
   burnBootloader(options: CoreService.Options.Bootloader): Promise<void>;
+  updateIndex({ types }: { types: IndexType[] }): Promise<void>;
+  /**
+   * If the IDE2 detects invalid or missing indexes on core client init,
+   * IDE2 tries to update the indexes before the first frontend connects.
+   * Use this method to determine whether the backend has already updated
+   * the indexes before updating them.
+   *
+   * If yes, the connected frontend can update the local storage with the most
+   * recent index update date-time for a particular index type,
+   * and IDE2 can avoid the double indexes update.
+   */
+  indexUpdateSummaryBeforeInit(): Promise<Readonly<IndexUpdateSummary>>;
+}
+
+export const IndexTypeLiterals = ['platform', 'library'] as const;
+export type IndexType = typeof IndexTypeLiterals[number];
+export namespace IndexType {
+  export function is(arg: unknown): arg is IndexType {
+    return (
+      typeof arg === 'string' && IndexTypeLiterals.includes(arg as IndexType)
+    );
+  }
+  export const All: IndexType[] = IndexTypeLiterals.filter(is);
 }
 
 export namespace CoreService {
