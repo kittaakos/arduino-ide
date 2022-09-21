@@ -3,7 +3,13 @@ import { Searchable } from './searchable';
 import { Installable } from './installable';
 import { ArduinoComponent } from './arduino-component';
 import { nls } from '@theia/core/lib/common/nls';
-import { All, Contributed, Partner, Type, Updatable } from '../nls';
+import {
+  All,
+  Contributed,
+  Partner,
+  Type as TypeLabel,
+  Updatable,
+} from '../nls';
 
 export type AvailablePorts = Record<string, [Port, Array<Board>]>;
 export namespace AvailablePorts {
@@ -161,6 +167,11 @@ export namespace BoardSearch {
     'Arduino@Heart',
   ] as const;
   export type Type = typeof TypeLiterals[number];
+  export namespace Type {
+    export function is(arg: unknown): arg is Type {
+      return typeof arg === 'string' && TypeLiterals.includes(arg as Type);
+    }
+  }
   export const TypeLabels: Record<Type, string> = {
     All: All,
     Updatable: Updatable,
@@ -177,7 +188,7 @@ export namespace BoardSearch {
     keyof Omit<BoardSearch, 'query'>,
     string
   > = {
-    type: Type,
+    type: TypeLabel,
   };
 }
 

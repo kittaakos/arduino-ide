@@ -1,6 +1,6 @@
 import { injectable } from '@theia/core/shared/inversify';
 import { BoardsListWidget } from './boards-list-widget';
-import type {
+import {
   BoardSearch,
   BoardsPackage,
 } from '../../common/protocol/boards-service';
@@ -11,6 +11,8 @@ export class BoardsListWidgetFrontendContribution extends ListWidgetFrontendCont
   BoardsPackage,
   BoardSearch
 > {
+  protected readonly openerAuthority = 'boardsmanager';
+
   constructor() {
     super({
       widgetId: BoardsListWidget.WIDGET_ID,
@@ -24,7 +26,22 @@ export class BoardsListWidgetFrontendContribution extends ListWidgetFrontendCont
     });
   }
 
-  override async initializeLayout(): Promise<void> {
-    this.openView();
+  protected parsePath(path: string): Omit<BoardSearch, 'query'> | undefined {
+    const segments = this.normalizedSegmentsOf(path, 1);
+    if (!segments) {
+      return undefined;
+    }
+    const [type] = segments;
+    if (!type) {
+      return {
+        type: 'All',
+      };
+    }
+    if (BoardSearch.Type.is(type)) {
+      return {
+        type,
+      };
+    }
+    return undefined;
   }
 }

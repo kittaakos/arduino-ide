@@ -8,7 +8,7 @@ import {
   Partner,
   Recommended,
   Retired,
-  Type,
+  Type as TypeLabel,
   Updatable,
 } from '../nls';
 
@@ -66,6 +66,11 @@ export namespace LibrarySearch {
     'Retired',
   ] as const;
   export type Type = typeof TypeLiterals[number];
+  export namespace Type {
+    export function is(arg: unknown): arg is Type {
+      return typeof arg === 'string' && TypeLiterals.includes(arg as Type);
+    }
+  }
   export const TypeLabels: Record<Type, string> = {
     All: All,
     Updatable: Updatable,
@@ -90,6 +95,11 @@ export namespace LibrarySearch {
     'Uncategorized',
   ] as const;
   export type Topic = typeof TopicLiterals[number];
+  export namespace Topic {
+    export function is(arg: unknown): arg is Topic {
+      return typeof arg === 'string' && TopicLiterals.includes(arg as Topic);
+    }
+  }
   export const TopicLabels: Record<Topic, string> = {
     All: All,
     Communication: nls.localize(
@@ -126,7 +136,7 @@ export namespace LibrarySearch {
     string
   > = {
     topic: nls.localize('arduino/librarySearchProperty/topic', 'Topic'),
-    type: Type,
+    type: TypeLabel,
   };
 }
 
