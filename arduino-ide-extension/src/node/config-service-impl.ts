@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import { dirname } from 'path';
 import * as yaml from 'js-yaml';
 import * as grpc from '@grpc/grpc-js';
+import { getSystemProxy } from 'os-proxy-config';
 import { injectable, inject, named } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
 import { ILogger } from '@theia/core/lib/common/logger';
@@ -133,20 +134,29 @@ export class ConfigServiceImpl
   protected async loadCliConfig(
     initializeIfAbsent = true
   ): Promise<DefaultCliConfig | undefined> {
-    const cliConfigFileUri = await this.getCliConfigFileUri();
+    const [cliConfigFileUri, systemProxyConfig] = await Promise.all([
+      this.getCliConfigFileUri(),
+      getSystemProxy(),
+    ]);
     const cliConfigPath = FileUri.fsPath(cliConfigFileUri);
     try {
       const content = await fs.readFile(cliConfigPath, {
         encoding: 'utf8',
       });
-      const model = (yaml.safeLoad(content) || {}) as DefaultCliConfig;
-      if (model.directories.data && model.directories.user) {
-        return model;
+      const config = (yaml.safeLoad(content) || {}) as DefaultCliConfig;
+      if (config.directories.data && config.directories.user) {
+        return config;
       }
       // The CLI can run with partial (missing `port`, `directories`), the IDE2 cannot.
       // We merge the default CLI config with the partial user's config.
-      const fallbackModel = await this.getFallbackCliConfig();
-      return deepmerge(fallbackModel, model) as DefaultCliConfig;
+      const fallbackConfig = deepmerge(
+        await this.getFallbackCliConfig(),
+        config
+      ) as DefaultCliConfig;
+      return DefaultCliConfig.maybeSetSystemProxy(
+        fallbackConfig,
+        systemProxyConfig
+      );
     } catch (error) {
       if ('code' in error && error.code === 'ENOENT') {
         if (initializeIfAbsent) {

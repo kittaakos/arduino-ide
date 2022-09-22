@@ -43,9 +43,10 @@ export interface ProxySettings {
 }
 export type Network = 'none' | ProxySettings;
 export namespace Network {
+  const defaultProtocol = 'http';
   export function Default(): Network {
     return {
-      protocol: 'http',
+      protocol: defaultProtocol,
       hostname: '',
       port: '',
       username: '',
@@ -79,7 +80,9 @@ export namespace Network {
     const { protocol, hostname, password, username, port } = network;
     try {
       const defaultUrl = new URL(
-        `${protocol ? protocol : 'http'}://${hostname ? hostname : '_'}`
+        `${protocol ? protocol : defaultProtocol}://${
+          hostname ? hostname : '_'
+        }`
       );
       return Object.assign(defaultUrl, {
         protocol,
@@ -101,10 +104,10 @@ export namespace Network {
       return false;
     }
     return (
-      left.hostname === right.hostname &&
-      left.password === right.password &&
       left.protocol === right.protocol &&
-      left.username === right.username
+      left.hostname === right.hostname &&
+      left.username === right.username &&
+      left.password === right.password
     );
   }
 }

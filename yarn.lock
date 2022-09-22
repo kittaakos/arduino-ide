@@ -10009,6 +10009,11 @@ lzma-native@^8.0.5:
     node-gyp-build "^4.2.1"
     readable-stream "^3.6.0"
 
+mac-system-proxy@^1.0.0:
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/mac-system-proxy/-/mac-system-proxy-1.0.4.tgz#30bc14ffb04789fc790e018245cb6d02eee9f32f"
+  integrity sha512-IAkNLxXZrYuM99A2OhPrvUoAxohsxQciJh2D2xnD+R6vypn/AVyOYLsbZsMVCS/fEbLIe67nQ8krEAfqP12BVg==
+
 macaddress@^0.2.9:
   version "0.2.9"
   resolved "https://registry.yarnpkg.com/macaddress/-/macaddress-0.2.9.tgz#3579b8b9acd5b96b4553abf0f394185a86813cb3"
@@ -11570,6 +11575,14 @@ os-name@^3.1.0:
     macos-release "^2.2.0"
     windows-release "^3.1.0"
 
+os-proxy-config@^1.1.1:
+  version "1.1.1"
+  resolved "https://registry.yarnpkg.com/os-proxy-config/-/os-proxy-config-1.1.1.tgz#893f822ef69c7cd6fad60476fc90be62105da7a6"
+  integrity sha512-dWQwqUUk0LJIYDxVonC47ARjXTZfsRzgYPQQd3/o8UlkY4G5QF9NYNujE+TJUGsbGbkACRjFwA0HA5yb5gdwWA==
+  dependencies:
+    mac-system-proxy "^1.0.0"
+    windows-system-proxy "^1.0.0"
+
 os-tmpdir@^1.0.0, os-tmpdir@~1.0.2:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/os-tmpdir/-/os-tmpdir-1.0.2.tgz#bbe67406c79aa85c5cfec766fe5734555dfa1274"
@@ -12113,7 +12126,7 @@ postinstall-build@^5.0.1:
   resolved "https://registry.yarnpkg.com/postinstall-build/-/postinstall-build-5.0.3.tgz#238692f712a481d8f5bc8960e94786036241efc7"
   integrity sha512-vPvPe8TKgp4FLgY3+DfxCE5PIfoXBK2lyLfNCxsRbDsV6vS4oU5RG/IWxrblMn6heagbnMED3MemUQllQ2bQUg==
 
-prebuild-install@^5.2.4:
+prebuild-install@^5.2.4, prebuild-install@^5.3.5:
   version "5.3.6"
   resolved "https://registry.yarnpkg.com/prebuild-install/-/prebuild-install-5.3.6.tgz#7c225568d864c71d89d07f8796042733a3f54291"
   integrity sha512-s8Aai8++QQGi4sSbs/M1Qku62PFK49Jm1CbgXklGz4nmHveDq0wzJkg7Na5QbnO1uNH8K7iqx2EQ/mV0MZEmOg==
@@ -12906,6 +12919,14 @@ regexpu-core@^5.0.1:
     regjsparser "^0.8.2"
     unicode-match-property-ecmascript "^2.0.0"
     unicode-match-property-value-ecmascript "^2.0.0"
+
+registry-js@^1.15.1:
+  version "1.15.1"
+  resolved "https://registry.yarnpkg.com/registry-js/-/registry-js-1.15.1.tgz#f41c329bfc2461b6c20e1aea3f0b2e26b6d6bdd5"
+  integrity sha512-aHEHtbzqusxkhprn7+rf2Cu7z0oPHaXVuOVKTpZigBSRpXUTw7+yWBJyuAREpG1bt2doe+qJzSR+kyZ9uWsj7A==
+  dependencies:
+    node-addon-api "^3.1.0"
+    prebuild-install "^5.3.5"
 
 regjsgen@^0.6.0:
   version "0.6.0"
@@ -15475,6 +15496,13 @@ windows-release@^3.1.0:
   integrity sha512-OSOGH1QYiW5yVor9TtmXKQvt2vjQqbYS+DqmsZw+r7xDwLXEeT3JGW0ZppFmHx4diyXmxt238KFR3N9jzevBRg==
   dependencies:
     execa "^1.0.0"
+
+windows-system-proxy@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/windows-system-proxy/-/windows-system-proxy-1.0.0.tgz#dc3b3dac2828e0a20546b0243ac611135b6f951b"
+  integrity sha512-qd1WfyX9gjAqI36RHt95di2+FBr74DhvELd1EASgklCGScjwReHnWnXfUyabp/CJWl/IdnkUzG0Ub6Cv2R4KJQ==
+  dependencies:
+    registry-js "^1.15.1"
 
 word-wrap@^1.2.3, word-wrap@~1.2.3:
   version "1.2.3"

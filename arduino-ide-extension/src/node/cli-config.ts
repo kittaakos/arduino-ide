@@ -1,4 +1,5 @@
-import { RecursivePartial } from '@theia/core/lib/common/types';
+import type { RecursivePartial } from '@theia/core/lib/common/types';
+import type { ProxyConfig } from 'os-proxy-config';
 import { AdditionalUrls } from '../common/protocol';
 
 export const CLI_CONFIG = 'arduino-cli.yaml';
@@ -112,5 +113,22 @@ export namespace DefaultCliConfig {
       BoardManager.sameAs(left.board_manager, right.board_manager) &&
       Logging.sameAs(left.logging, right.logging)
     );
+  }
+  /**
+   * Sets the `network` property of the `config` argument if a proxy settings was detected in the system, but no proxy is configured in the CLI config.
+   * https://github.com/arduino/arduino-ide/issues/1438
+   */
+  export function maybeSetSystemProxy(
+    config: DefaultCliConfig,
+    systemProxyConfig: ProxyConfig | undefined
+  ): DefaultCliConfig {
+    if (
+      systemProxyConfig &&
+      systemProxyConfig.proxyUrl &&
+      !config.network?.proxy
+    ) {
+      config.network = { proxy: systemProxyConfig.proxyUrl };
+    }
+    return config;
   }
 }
