@@ -10,7 +10,7 @@ class HistoryList {
   private readonly items: string[] = [];
   private index = -1;
 
-  constructor(private readonly size = 5) {}
+  constructor(private readonly size = 100) {}
 
   push(val: string): void {
     this.items.push(val);
