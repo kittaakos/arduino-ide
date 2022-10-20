@@ -159,7 +159,7 @@ export class SerialMonitorSendInput extends React.Component<
         const { text } = this.state;
         this.onSend();
         if (text) {
-          this.state.history.push(this.state.text);
+          this.state.history.push(text);
         }
       } else if (key === Key.ARROW_UP) {
         const text = this.state.history.previous();
