@@ -91,10 +91,8 @@
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
       "target": {
-        "target": "default",
-        "arch": "universal"
-      },
-      "x64ArchFiles": "node_modules/arduino-ide-extension/build/arduino-cli"
+        "target": "default"
+      }
     },
     "linux": {
       "target": [
