@@ -8,7 +8,7 @@
   const isCI = require('is-ci');
   // Note, this will crash on PI if the available memory is less than desired heap size.
   // https://github.com/shelljs/shelljs/issues/1024#issuecomment-1001552543
-  shell.env.NODE_OPTIONS = '--max_old_space_size=4096'; // Increase heap size for the CI
+  shell.env.NODE_OPTIONS = '--max_old_space_size=2048'; // Increase heap size for the CI
   shell.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true'; // Skip download and avoid `ERROR: Failed to download Chromium`.
   const template = require('./config').generateTemplate(
     new Date().toISOString()
@@ -266,14 +266,14 @@ ${fs.readFileSync(path('..', 'build', 'package.json')).toString()}
   //-----------------------------------+
   // Package the electron application. |
   //-----------------------------------+
+  const arch = process.platform === 'linux' && process.arch === 'arm' ? ' --armv7l' : '';
   exec(
-    `yarn --network-timeout 1000000 --cwd ${path('..', 'build')} package`,
+    `yarn --network-timeout 1000000 --cwd ${path('..', 'build')} package${arch}`,
     `Packaging your ${productName} application`
   );
 
   //-----------------------------------------------------------------------------------------------------+
-  // Recalculate artifacts hash and copy to another folder (because they can change after signing them).
-  // Azure does not support wildcard for `PublishBuildArtifacts@1.pathToPublish` |
+  // Recalculate artifacts hash and copy to another folder (because they can change after signing them). |
   //-----------------------------------------------------------------------------------------------------+
   if (isCI) {
     try {
