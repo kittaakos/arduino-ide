@@ -8,6 +8,7 @@ import {
   MenuNode,
   MenuPath,
 } from '@theia/core/lib/common/menu';
+import { MAIN_MENU_BAR, MenuNode, MenuPath } from '@theia/core/lib/common/menu';
 import {
   ElectronMainMenuFactory as TheiaElectronMainMenuFactory,
   ElectronMenuItemRole,
@@ -40,7 +41,9 @@ export class ElectronMainMenuFactory extends TheiaElectronMainMenuFactory {
   override createElectronMenuBar(): Electron.Menu {
     this._toggledCommands.clear(); // https://github.com/eclipse-theia/theia/issues/8977
     const menuModel = this.menuProvider.getMenu(MAIN_MENU_BAR);
-    const template = this.fillMenuTemplate([], menuModel);
+    const template = this.fillMenuTemplate([], menuModel, [], {
+      rootMenuPath: MAIN_MENU_BAR,
+    });
     if (isOSX) {
       template.unshift(this.createOSXMenu());
     }
@@ -68,11 +71,15 @@ export class ElectronMainMenuFactory extends TheiaElectronMainMenuFactory {
 
   override createElectronContextMenu(
     menuPath: MenuPath,
-    args?: any[]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    args?: any[],
+    context?: HTMLElement
   ): Electron.Menu {
     const menuModel = this.menuProvider.getMenu(menuPath);
     const template = this.fillMenuTemplate([], menuModel, args, {
       showDisabled: false,
+      context,
+      rootMenuPath: menuPath,
     });
     return remote.Menu.buildFromTemplate(this.escapeAmpersand(template));
   }
@@ -101,15 +108,21 @@ export class ElectronMainMenuFactory extends TheiaElectronMainMenuFactory {
       const [, , /* about */ /* preferences */ ...rest] = submenu;
       const about = this.fillMenuTemplate(
         [],
-        this.menuProvider.getMenu(ArduinoMenus.HELP__ABOUT_GROUP)
+        this.menuProvider.getMenu(ArduinoMenus.HELP__ABOUT_GROUP),
+        [],
+        { rootMenuPath: ArduinoMenus.HELP__ABOUT_GROUP }
       );
       const preferences = this.fillMenuTemplate(
         [],
-        this.menuProvider.getMenu(ArduinoMenus.FILE__PREFERENCES_GROUP)
+        this.menuProvider.getMenu(ArduinoMenus.FILE__PREFERENCES_GROUP),
+        [],
+        { rootMenuPath: ArduinoMenus.FILE__PREFERENCES_GROUP }
       );
       const advanced = this.fillMenuTemplate(
         [],
-        this.menuProvider.getMenu(ArduinoMenus.FILE__ADVANCED_GROUP)
+        this.menuProvider.getMenu(ArduinoMenus.FILE__ADVANCED_GROUP),
+        [],
+        { rootMenuPath: ArduinoMenus.FILE__ADVANCED_GROUP }
       );
       return {
         label,
@@ -135,21 +148,22 @@ export class ElectronMainMenuFactory extends TheiaElectronMainMenuFactory {
     return undefined;
   }
 
-  protected override handleElectronDefault(
-    menuNode: MenuNode,
-    args: any[] = [],
-    options?: ElectronMenuOptions
+  protected override fillMenuTemplate(
+    parentItems: Electron.MenuItemConstructorOptions[],
+    menuModel: MenuNode,
+    args: unknown[] | undefined,
+    options: ElectronMenuOptions
   ): Electron.MenuItemConstructorOptions[] {
-    if (menuNode instanceof PlaceholderMenuNode) {
-      return [
-        {
-          label: menuNode.label,
-          enabled: false,
-          visible: true,
-        },
-      ];
+    if (menuModel instanceof PlaceholderMenuNode) {
+      parentItems.push({
+        label: menuModel.label,
+        enabled: false,
+        visible: true,
+      });
+    } else {
+      super.fillMenuTemplate(parentItems, menuModel, args, options);
     }
-    return [];
+    return parentItems;
   }
 
   // Copied from 1.25.0 Theia as is to customize the enablement of the menu items.

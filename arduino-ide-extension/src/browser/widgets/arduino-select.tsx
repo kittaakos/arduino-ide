@@ -1,17 +1,21 @@
 import * as React from '@theia/core/shared/react';
-import Select from 'react-select';
-import { Styles } from 'react-select/src/styles';
-import { Props } from 'react-select/src/components';
-import { ThemeConfig } from 'react-select/src/theme';
+import Select, { Props } from 'react-select/dist/declarations/src/Select';
+import { StylesConfig } from 'react-select/dist/declarations/src/styles';
+import { GroupBase } from 'react-select/dist/declarations/src/types';
+import { ThemeConfig } from 'react-select/dist/declarations/src/theme';
 
-export class ArduinoSelect<T> extends Select<T> {
-  constructor(props: Readonly<Props<T, false>>) {
+export class ArduinoSelect<
+  T,
+  IsMulti extends boolean = false,
+  Group extends GroupBase<T> = GroupBase<T>
+> extends Select<T, IsMulti, Group> {
+  constructor(props: Readonly<Props<T, IsMulti, Group>>) {
     super(props);
   }
 
-  override render(): React.ReactNode {
+  override render(): JSX.Element {
     const controlHeight = 27; // from `monitor.css` -> `.serial-monitor-container .head` (`height: 27px;`)
-    const styles: Styles<T, false> = {
+    const styles: StylesConfig<T, IsMulti, Group> = {
       control: (styles) => ({
         ...styles,
         minWidth: 120,
@@ -50,6 +54,8 @@ export class ArduinoSelect<T> extends Select<T> {
     });
     const DropdownIndicator = () => <span className="fa fa-caret-down caret" />;
     return (
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
       <Select
         {...this.props}
         className="theia-select"

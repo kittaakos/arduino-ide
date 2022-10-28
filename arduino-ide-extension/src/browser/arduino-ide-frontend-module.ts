@@ -181,8 +181,6 @@ import { EditorCommandContribution } from './theia/editor/editor-command';
 import { NavigatorTabBarDecorator as TheiaNavigatorTabBarDecorator } from '@theia/navigator/lib/browser/navigator-tab-bar-decorator';
 import { NavigatorTabBarDecorator } from './theia/navigator/navigator-tab-bar-decorator';
 import { Debug } from './contributions/debug';
-import { DebugSessionManager } from './theia/debug/debug-session-manager';
-import { DebugSessionManager as TheiaDebugSessionManager } from '@theia/debug/lib/browser/debug-session-manager';
 import { Sketchbook } from './contributions/sketchbook';
 import { DebugFrontendApplicationContribution } from './theia/debug/debug-frontend-application-contribution';
 import { DebugFrontendApplicationContribution as TheiaDebugFrontendApplicationContribution } from '@theia/debug/lib/browser/debug-frontend-application-contribution';
@@ -838,9 +836,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(AboutDialog).toSelf().inSingletonScope();
   rebind(TheiaAboutDialog).toService(AboutDialog);
 
-  // To avoid running `Save All` when there are no dirty editors before starting the debug session.
-  bind(DebugSessionManager).toSelf().inSingletonScope();
-  rebind(TheiaDebugSessionManager).toService(DebugSessionManager);
   // To remove the `Run` menu item from the application menu.
   bind(DebugFrontendApplicationContribution).toSelf().inSingletonScope();
   rebind(TheiaDebugFrontendApplicationContribution).toService(

@@ -213,24 +213,29 @@ export class WorkspaceService extends TheiaWorkspaceService {
       if (Sketch.isSketchFile(uri.toString())) {
         this.updateTitle();
       } else {
-        const title = this.workspaceTitle;
-        const fileName = this.labelProvider.getName(uri);
-        document.title = this.formatTitle(
-          title ? `${title} - ${fileName}` : fileName
-        );
+        console.error(new Error('TODO restore custom title customization'));
+        // const title = this.workspaceTitle;
+        // const fileName = this.labelProvider.getName(uri);
+        // document.title = this.formatTitle(
+        //   title ? `${title} - ${fileName}` : fileName
+        // );
       }
     } else {
       this.updateTitle();
     }
   }
 
-  protected override formatTitle(title?: string): string {
-    const version = this.version ? ` ${this.version}` : '';
-    const name = `${this.applicationName} ${version}`;
-    return title ? `${title} | ${name}` : name;
-  }
+  // protected override formatTitle(title?: string): string {
+  //   const version = this.version ? ` ${this.version}` : '';
+  //   const name = `${this.applicationName} ${version}`;
+  //   return title ? `${title} | ${name}` : name;
+  // }
+  // TODO
 
   protected get workspaceTitle(): string | undefined {
+    console.error(
+      new Error('TODO: customize the new WindowTitleService from Theia')
+    );
     if (this.workspace) {
       return this.labelProvider.getName(this.workspace.resource);
     }
