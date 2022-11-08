@@ -100,8 +100,6 @@ import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
 import { WebSocketProvider } from './web-socket/web-socket-provider';
 import { ClangFormatter } from './clang-formatter';
 import { FormatterPath } from '../common/protocol/formatter';
-import { LocalizationBackendContribution } from './i18n/localization-backend-contribution';
-import { LocalizationBackendContribution as TheiaLocalizationBackendContribution } from '@theia/core/lib/node/i18n/localization-backend-contribution';
 import { SurveyNotificationServiceImpl } from './survey-service-impl';
 import {
   SurveyNotificationService,
@@ -360,10 +358,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(BackendApplicationContribution).toService(PlotterBackendContribution);
   bind(ArduinoLocalizationContribution).toSelf().inSingletonScope();
   bind(LocalizationContribution).toService(ArduinoLocalizationContribution);
-  bind(LocalizationBackendContribution).toSelf().inSingletonScope();
-  rebind(TheiaLocalizationBackendContribution).toService(
-    LocalizationBackendContribution
-  );
 
   // Survey notification bindings
   // It's currently unused. https://github.com/arduino/arduino-ide/pull/1150

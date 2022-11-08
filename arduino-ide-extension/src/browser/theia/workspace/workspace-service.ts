@@ -38,7 +38,7 @@ export class WorkspaceService extends TheiaWorkspaceService {
   @named(StartupTaskProvider)
   private readonly providers: ContributionProvider<StartupTaskProvider>;
 
-  private version?: string;
+  version?: string; // TODO
   private _workspaceError: Error | undefined;
 
   async onStart(application: FrontendApplication): Promise<void> {

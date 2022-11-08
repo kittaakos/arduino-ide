@@ -308,8 +308,6 @@ import { SelectedBoard } from './contributions/selected-board';
 import { CheckForIDEUpdates } from './contributions/check-for-ide-updates';
 import { OpenBoardsConfig } from './contributions/open-boards-config';
 import { SketchFilesTracker } from './contributions/sketch-files-tracker';
-import { StatusBarImpl } from './theia/core/status-bar';
-import { StatusBarImpl as TheiaStatusBarImpl } from '@theia/core/lib/browser';
 import { EditorMenuContribution } from './theia/editor/editor-file';
 import { EditorMenuContribution as TheiaEditorMenuContribution } from '@theia/editor/lib/browser/editor-menu';
 import { PreferencesEditorWidget as TheiaPreferencesEditorWidget } from '@theia/preferences/lib/browser/views/preference-editor-widget';
@@ -817,10 +815,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   // To avoid duplicate tabs use deepEqual instead of string equal: https://github.com/eclipse-theia/theia/issues/11309
   bind(WidgetManager).toSelf().inSingletonScope();
   rebind(TheiaWidgetManager).toService(WidgetManager);
-
-  // To avoid running a status bar update on every single `keypress` event from the editor.
-  bind(StatusBarImpl).toSelf().inSingletonScope();
-  rebind(TheiaStatusBarImpl).toService(StatusBarImpl);
 
   // Debounced update for the tab-bar toolbar when typing in the editor.
   bind(DockPanelRenderer).toSelf();
