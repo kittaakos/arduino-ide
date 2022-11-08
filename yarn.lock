@@ -12530,10 +12530,10 @@ react-autosize-textarea@^7.0.0:
     line-height "^0.3.1"
     prop-types "^15.5.6"
 
-react-disable@^0.1.0:
-  version "0.1.0"
-  resolved "https://registry.yarnpkg.com/react-disable/-/react-disable-0.1.0.tgz#e3474aefcb2b91fcb534693c66b7497fb28b85af"
-  integrity sha512-3RbSYuUtakIy1ulCfDf6yoJAsjHFNLv467bSBwyxkNDyez/z7CbcTZ6QUWCrhfybvfm81IN6QT3pUfDoKcvaFQ==
+react-disable@^0.1.1:
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/react-disable/-/react-disable-0.1.1.tgz#86d2d0932259f626a70fa46f63d6d61cbe7dd066"
+  integrity sha512-KKEDYJUnF8hIPlmGYJu38HG8BlBB4EElCFY1zfA9W46/MF76DSGvgcduWl1eVT/CAw3ahb2sWTSfhon+kPSiKw==
 
 react-dom@^18.2.0:
   version "18.2.0"
@@ -12587,10 +12587,10 @@ react-perfect-scrollbar@^1.5.3:
     perfect-scrollbar "^1.5.0"
     prop-types "^15.6.1"
 
-react-select@^5.5.7:
-  version "5.5.7"
-  resolved "https://registry.yarnpkg.com/react-select/-/react-select-5.5.7.tgz#87760030e6377a7ae3d0b1e419190af175ec2a0e"
-  integrity sha512-izQBXNhTPqXDw4gxzTbc9aLII4tCJ2pdMm6l/WVzKhfHm3RLErheqDNgeenU0XxzqbwT9swYO4CAYk5IzqLlYw==
+react-select@^5.6.0:
+  version "5.6.0"
+  resolved "https://registry.yarnpkg.com/react-select/-/react-select-5.6.0.tgz#d987f4c86b3dcd32307a0104e503e4e8a9777a34"
+  integrity sha512-uUvP/72rA8NGhOL16RVBaeC12Wa4NUE0iXIa6hz0YRno9ZgxTmpuMeKzjR7vHcwmigpVCoe0prP+3NVb6Obq8Q==
   dependencies:
     "@babel/runtime" "^7.12.0"
     "@emotion/cache" "^11.4.0"
@@ -12649,9 +12649,9 @@ react-virtuoso@^2.17.0:
     "@virtuoso.dev/urx" "^0.2.12"
 
 react-window@^1.8.6:
-  version "1.8.7"
-  resolved "https://registry.yarnpkg.com/react-window/-/react-window-1.8.7.tgz#5e9fd0d23f48f432d7022cdb327219353a15f0d4"
-  integrity sha512-JHEZbPXBpKMmoNO1bNhoXOOLg/ujhL/BU4IqVU9r8eQPcy5KQnGHIHDRkJ0ns9IM5+Aq5LNwt3j8t3tIrePQzA==
+  version "1.8.8"
+  resolved "https://registry.yarnpkg.com/react-window/-/react-window-1.8.8.tgz#1b52919f009ddf91970cbdb2050a6c7be44df243"
+  integrity sha512-D4IiBeRtGXziZ1n0XklnFGu7h9gU684zepqyKzgPNzrsrk7xOCxni+TCckjg2Nr/DiaEEGVVmnhYSlT2rB47dQ==
   dependencies:
     "@babel/runtime" "^7.0.0"
     memoize-one ">=3.1.1 <6"
