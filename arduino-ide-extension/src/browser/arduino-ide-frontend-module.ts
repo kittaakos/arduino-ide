@@ -84,10 +84,7 @@ import { BoardsAutoInstaller } from './boards/boards-auto-installer';
 import { ShellLayoutRestorer } from './theia/core/shell-layout-restorer';
 import { ListItemRenderer } from './widgets/component-list/list-item-renderer';
 import { ColorContribution } from '@theia/core/lib/browser/color-application-contribution';
-import {
-  MonacoThemeJson,
-  MonacoThemingService,
-} from '@theia/monaco/lib/browser/monaco-theming-service';
+
 import {
   ArduinoDaemonPath,
   ArduinoDaemon,
@@ -311,8 +308,6 @@ import { SelectedBoard } from './contributions/selected-board';
 import { CheckForIDEUpdates } from './contributions/check-for-ide-updates';
 import { OpenBoardsConfig } from './contributions/open-boards-config';
 import { SketchFilesTracker } from './contributions/sketch-files-tracker';
-import { MonacoThemeServiceIsReady } from './utils/window';
-import { Deferred } from '@theia/core/lib/common/promise-util';
 import { StatusBarImpl } from './theia/core/status-bar';
 import { StatusBarImpl as TheiaStatusBarImpl } from '@theia/core/lib/browser';
 import { EditorMenuContribution } from './theia/editor/editor-file';
@@ -335,32 +330,6 @@ import { InterfaceScale } from './contributions/interface-scale';
 import { OpenHandler } from '@theia/core/lib/browser/opener-service';
 import { NewCloudSketch } from './contributions/new-cloud-sketch';
 import { SketchbookCompositeWidget } from './widgets/sketchbook/sketchbook-composite-widget';
-
-const registerArduinoThemes = () => {
-  const themes: MonacoThemeJson[] = [
-    {
-      id: 'arduino-theme',
-      label: 'Light (Arduino)',
-      uiTheme: 'vs',
-      json: require('../../src/browser/data/default.color-theme.json'),
-    },
-    {
-      id: 'arduino-theme-dark',
-      label: 'Dark (Arduino)',
-      uiTheme: 'vs-dark',
-      json: require('../../src/browser/data/dark.color-theme.json'),
-    },
-  ];
-  themes.forEach((theme) => MonacoThemingService.register(theme));
-};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const global = window as any;
-const ready = global[MonacoThemeServiceIsReady] as Deferred;
-if (ready) {
-  ready.promise.then(registerArduinoThemes);
-} else {
-  registerArduinoThemes();
-}
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
   // Commands and toolbar items
@@ -937,7 +906,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(LocalCacheFsProvider).toSelf().inSingletonScope();
   bind(FileServiceContribution).toService(LocalCacheFsProvider);
   bind(CloudSketchbookCompositeWidget).toSelf();
-  bind<WidgetFactory>(WidgetFactory).toDynamicValue((ctx) => ({
+  bind(WidgetFactory).toDynamicValue((ctx) => ({
     id: 'cloud-sketchbook-composite-widget',
     createWidget: () => ctx.container.get(CloudSketchbookCompositeWidget),
   }));

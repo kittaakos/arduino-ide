@@ -218,7 +218,7 @@ export class SettingsComponent extends React.Component<
             <div className="flex-line">
               <select
                 className="theia-select"
-                value={ThemeService.get().getCurrentTheme().label}
+                value={this.props.themeService.getCurrentTheme().label}
                 onChange={this.themeDidChange}
               >
                 {this.props.themeService.getThemes().map(({ id, label }) => (
@@ -613,8 +613,8 @@ export class SettingsComponent extends React.Component<
     const theme = this.props.themeService.getThemes()[selectedIndex];
     if (theme) {
       this.setState({ themeId: theme.id });
-      if (ThemeService.get().getCurrentTheme().id !== theme.id) {
-        ThemeService.get().setCurrentTheme(theme.id);
+      if (this.props.themeService.getCurrentTheme().id !== theme.id) {
+        this.props.themeService.setCurrentTheme(theme.id);
       }
     }
   };

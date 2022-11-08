@@ -37,9 +37,9 @@
     "xhr2": "^0.2.1"
   },
   "resolutions": {
-    "@types/react": "16.14.25",
-    "electron-rebuild": "3.2.9",
-    "@types/react-dom": "16.9.17"
+    "@types/react": "18.0.0",
+    "@types/react-dom": "18.0.0",
+    "electron-rebuild": "3.2.9"
   },
   "scripts": {
     "prepare": "lerna run prepare && yarn download:plugins",
