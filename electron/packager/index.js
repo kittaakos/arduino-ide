@@ -49,7 +49,6 @@
   rm('-rf', path('..', workingCopy));
   // Clean up the `./electron/build` folder.
   const resourcesToKeep = [
-    'patch',
     'resources',
     'scripts',
     'template-package.json'
@@ -58,9 +57,9 @@
     .filter((filename) => resourcesToKeep.indexOf(filename) === -1)
     .forEach((filename) => rm('-rf', path('..', 'build', filename)));
 
-  // Clean up the `./electron/build/patch` and `./electron/build/resources` folder with Git.
+  // Clean up the `./electron/build/resources` folder with Git.
   // To avoid file duplication between bundled app and dev mode, some files are copied from `./electron-app` to `./electron/build` folder.
-  const foldersToSyncFromDev = ['patch', 'resources'];
+  const foldersToSyncFromDev = ['resources'];
   foldersToSyncFromDev.forEach(filename => shell.exec(`git -C ${path('..', 'build', filename)} clean -ffxdq`, { async: false }));
 
   const extensions = require('./extensions.json');
