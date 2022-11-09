@@ -37,7 +37,10 @@
     "frontend": {
       "config": {
         "applicationName": "Arduino IDE",
-        "defaultTheme": "arduino-theme",
+        "defaultTheme": {
+          "light": "arduino-theme",
+          "dark": "arduino-theme-dark"
+        },
         "validatePreferencesSchema": false,
         "preferences": {
           "files.autoSave": "afterDelay",
