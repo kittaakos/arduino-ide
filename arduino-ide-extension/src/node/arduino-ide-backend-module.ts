@@ -107,6 +107,8 @@ import {
 } from '../common/protocol/survey-service';
 import { IsTempSketch } from './is-temp-sketch';
 import { rebindNsfwFileSystemWatcher } from './theia/filesystem/nsfw-watcher/nsfw-bindings';
+import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';
+import { HostedPluginLocalizationService as TheiaHostedPluginLocalizationService } from '@theia/plugin-ext/lib/hosted/node/hosted-plugin-localization-service';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(BackendApplication).toSelf().inSingletonScope();
@@ -373,6 +375,11 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     .inSingletonScope();
 
   bind(IsTempSketch).toSelf().inSingletonScope();
+
+  bind(HostedPluginLocalizationService).toSelf().inSingletonScope();
+  rebind(TheiaHostedPluginLocalizationService).toService(
+    HostedPluginLocalizationService
+  );
 });
 
 function bindChildLogger(bind: interfaces.Bind, name: string): void {
