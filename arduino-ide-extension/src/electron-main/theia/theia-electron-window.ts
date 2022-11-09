@@ -45,8 +45,8 @@ export class TheiaElectronWindow extends DefaultTheiaElectronWindow {
     );
   }
 
-  // // https://github.com/eclipse-theia/theia/issues/11600#issuecomment-1240657481
-  // protected override isSender(e: IpcMainEvent): boolean {
-  //   return e.sender.id === this._window.webContents.id;
-  // }
+  // https://github.com/eclipse-theia/theia/issues/11600#issuecomment-1240657481
+  protected override isSender(e: IpcMainEvent): boolean {
+    return e.sender.id === this._window.webContents.id;
+  }
 }

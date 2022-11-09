@@ -360,6 +360,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(BackendApplicationContribution).toService(PlotterBackendContribution);
   bind(ArduinoLocalizationContribution).toSelf().inSingletonScope();
   bind(LocalizationContribution).toService(ArduinoLocalizationContribution);
+  bind(HostedPluginLocalizationService).toSelf().inSingletonScope();
+  rebind(TheiaHostedPluginLocalizationService).toService(
+    HostedPluginLocalizationService
+  );
 
   // Survey notification bindings
   // It's currently unused. https://github.com/arduino/arduino-ide/pull/1150
@@ -375,11 +379,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     .inSingletonScope();
 
   bind(IsTempSketch).toSelf().inSingletonScope();
-
-  bind(HostedPluginLocalizationService).toSelf().inSingletonScope();
-  rebind(TheiaHostedPluginLocalizationService).toService(
-    HostedPluginLocalizationService
-  );
 });
 
 function bindChildLogger(bind: interfaces.Bind, name: string): void {
