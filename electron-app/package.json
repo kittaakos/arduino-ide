@@ -50,6 +50,7 @@
             "strings": false
           },
           "editor.maxTokenizationLineLength": 500,
+          "editor.bracketPairColorization.enabled": false,
           "breadcrumbs.enabled": false,
           "workbench.tree.renderIndentGuides": "none",
           "explorer.compactFolders": false
