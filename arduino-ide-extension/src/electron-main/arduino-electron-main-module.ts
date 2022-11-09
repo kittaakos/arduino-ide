@@ -18,7 +18,6 @@ import { IDEUpdaterImpl } from './ide-updater/ide-updater-impl';
 import { ElectronMainApplication } from './theia/electron-main-application';
 import { ElectronMainWindowServiceImpl } from './theia/electron-main-window-service';
 import { TheiaElectronWindow } from './theia/theia-electron-window';
-import { ElectronNativeKeymap } from '@theia/core/lib/electron-main/electron-native-keymap';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ElectronMainApplication).toSelf().inSingletonScope();
@@ -59,8 +58,4 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     .inSingletonScope();
 
   bind(IsTempSketch).toSelf().inSingletonScope();
-
-  // https://github.com/eclipse-theia/theia/issues/11688
-  bind(ElectronNativeKeymap).toSelf().inSingletonScope();
-  bind(ElectronMainApplicationContribution).toService(ElectronNativeKeymap);
 });
