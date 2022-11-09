@@ -328,6 +328,8 @@ import { InterfaceScale } from './contributions/interface-scale';
 import { OpenHandler } from '@theia/core/lib/browser/opener-service';
 import { NewCloudSketch } from './contributions/new-cloud-sketch';
 import { SketchbookCompositeWidget } from './widgets/sketchbook/sketchbook-composite-widget';
+import { WindowTitleUpdater } from './theia/core/window-title-updater';
+import { WindowTitleUpdater as TheiaWindowTitleUpdater } from '@theia/core/lib/browser/window/window-title-updater';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
   // Commands and toolbar items
@@ -949,4 +951,8 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   rebind(TheiaHostedPluginSupport).toService(HostedPluginSupport);
   bind(HostedPluginEvents).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(HostedPluginEvents);
+
+  // custom window titles
+  bind(WindowTitleUpdater).toSelf().inSingletonScope();
+  rebind(TheiaWindowTitleUpdater).toService(WindowTitleUpdater);
 });

@@ -43,6 +43,7 @@
         },
         "validatePreferencesSchema": false,
         "preferences": {
+          "window.title": "${rootName}${activeEditorShort}${appName}",
           "files.autoSave": "afterDelay",
           "editor.minimap.enabled": false,
           "editor.tabSize": 2,
