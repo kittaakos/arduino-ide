@@ -50,7 +50,7 @@ export class WindowTitleUpdater extends TheiaWindowTitleUpdater {
     const uri = NavigatableWidget.getUri(widget);
     if (uri) {
       const base = uri.path.base;
-      console.log(base, `${rootName}.ino`, `${rootName}.ino` !== base);
+      // Do not show the basename of the main sketch file. Only other sketch file names are visible in the title.
       if (`${rootName}.ino` !== base) {
         activeEditorShort = ` - ${base} `;
       }
