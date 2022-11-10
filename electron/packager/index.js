@@ -162,13 +162,6 @@
       `Testing the ${productName} application`
     );
 
-    // Collect all unused dependencies by the backend. We have to remove them from the electron app.
-    // The `bundle.js` already contains everything we need for the frontend.
-    // We have to do it before changing the dependencies to `local-path`.
-    const unusedDependencies = await utils.collectUnusedDependencies(
-      '../working-copy/electron-app/'
-    );
-
     //-------------------------------------------------------------------------------------------------------------+
     // Change the regular NPM dependencies to `local-paths`, so that we can build them without any NPM registries. |
     //-------------------------------------------------------------------------------------------------------------+
@@ -192,11 +185,6 @@
     //------------------------------------------------------------------------------------+
     // @ts-ignore
     const appPackageJson = require('../working-copy/electron-app/package.json');
-    template.build.files = [
-      ...template.build.files,
-      ...unusedDependencies.map((name) => `!node_modules/${name}`),
-    ];
-
     const dependencies = {};
     for (const extension of extensions) {
       dependencies[extension] = `file:../working-copy/${extension}`;
