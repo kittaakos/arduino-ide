@@ -46,7 +46,13 @@ export class WindowTitleUpdater extends TheiaWindowTitleUpdater {
 
   protected override updateTitleWidget(widget?: Widget | undefined): void {
     let activeEditorShort = '';
-    const { rootName, appName } = this;
+    const rootName = this.workspaceService.workspace?.name ?? '';
+    let appName = `${this.applicationName}${
+      this.applicationVersion ? ` ${this.applicationVersion}` : ''
+    }`;
+    if (rootName) {
+      appName = ` | ${appName}`;
+    }
     const uri = NavigatableWidget.getUri(widget);
     if (uri) {
       const base = uri.path.base;
@@ -56,15 +62,5 @@ export class WindowTitleUpdater extends TheiaWindowTitleUpdater {
       }
     }
     this.windowTitleService.update({ rootName, appName, activeEditorShort });
-  }
-
-  private get rootName(): string {
-    return this.workspaceService.workspace?.name ?? '';
-  }
-
-  private get appName(): string {
-    return ` | ${this.applicationName}${
-      this.applicationVersion ? ` ${this.applicationVersion}` : ''
-    }`;
   }
 }
