@@ -5,6 +5,7 @@ import {
   ElectronMainApplication as TheiaElectronMainApplication,
   ElectronMainApplicationContribution,
 } from '@theia/core/lib/electron-main/electron-main-application';
+import { ElectronMessagingContribution as TheiaElectronMessagingContribution } from '@theia/core/lib/electron-main/messaging/electron-messaging-contribution';
 import { TheiaElectronWindow as DefaultTheiaElectronWindow } from '@theia/core/lib/electron-main/theia-electron-window';
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
@@ -17,6 +18,7 @@ import { IsTempSketch } from '../node/is-temp-sketch';
 import { IDEUpdaterImpl } from './ide-updater/ide-updater-impl';
 import { ElectronMainApplication } from './theia/electron-main-application';
 import { ElectronMainWindowServiceImpl } from './theia/electron-main-window-service';
+import { ElectronMessagingContribution } from './theia/electron-messaging-contribution';
 import { TheiaElectronWindow } from './theia/theia-electron-window';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
@@ -58,4 +60,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     .inSingletonScope();
 
   bind(IsTempSketch).toSelf().inSingletonScope();
+
+  // Fix for cannot reload window: https://github.com/eclipse-theia/theia/issues/11600
+  bind(ElectronMessagingContribution).toSelf().inSingletonScope();
+  rebind(TheiaElectronMessagingContribution).toService(
+    ElectronMessagingContribution
+  );
 });
