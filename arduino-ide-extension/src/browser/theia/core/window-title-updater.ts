@@ -9,7 +9,7 @@ import {
   injectable,
   postConstruct,
 } from '@theia/core/shared/inversify';
-import { WorkspaceService } from '@theia/workspace/lib/browser';
+import { WorkspaceService } from '@theia/workspace/lib/browser/workspace-service';
 
 @injectable()
 export class WindowTitleUpdater extends TheiaWindowTitleUpdater {
