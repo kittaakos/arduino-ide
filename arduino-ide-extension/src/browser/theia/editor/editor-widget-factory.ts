@@ -1,7 +1,7 @@
 import { inject, injectable } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
 import { EditorWidget } from '@theia/editor/lib/browser';
-import { NavigatableWidgetOptions } from '@theia/core/lib/browser';
+import type { NavigatableWidgetOptions } from '@theia/core/lib/browser';
 import { EditorWidgetFactory as TheiaEditorWidgetFactory } from '@theia/editor/lib/browser/editor-widget-factory';
 import {
   CurrentSketch,
