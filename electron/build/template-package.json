@@ -12,7 +12,7 @@
     "@theia/cli": "1.31.1",
     "cross-env": "^7.0.2",
     "electron-builder": "23.3.3",
-    "@electron/notarize": "^1.2.3",
+    "electron-notarize": "^1.1.1",
     "is-ci": "^2.0.0",
     "ncp": "^2.0.0",
     "shelljs": "^0.8.3"
