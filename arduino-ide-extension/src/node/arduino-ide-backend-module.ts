@@ -100,6 +100,8 @@ import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
 import { WebSocketProvider } from './web-socket/web-socket-provider';
 import { ClangFormatter } from './clang-formatter';
 import { FormatterPath } from '../common/protocol/formatter';
+import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';
+import { HostedPluginLocalizationService as TheiaHostedPluginLocalizationService } from '@theia/plugin-ext/lib/hosted/node/hosted-plugin-localization-service';
 import { SurveyNotificationServiceImpl } from './survey-service-impl';
 import {
   SurveyNotificationService,
@@ -107,8 +109,6 @@ import {
 } from '../common/protocol/survey-service';
 import { IsTempSketch } from './is-temp-sketch';
 import { rebindNsfwFileSystemWatcher } from './theia/filesystem/nsfw-watcher/nsfw-bindings';
-import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';
-import { HostedPluginLocalizationService as TheiaHostedPluginLocalizationService } from '@theia/plugin-ext/lib/hosted/node/hosted-plugin-localization-service';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(BackendApplication).toSelf().inSingletonScope();
