@@ -1,4 +1,27 @@
-import { Line, SerialMonitorOutput } from './serial-monitor-send-output';
+import dateFormat = require('dateformat');
+
+export interface Line {
+  message: string;
+  timestamp?: Date;
+  length: number;
+}
+
+export interface State {
+  lines: Line[];
+  timestamp: boolean;
+  charCount: number;
+}
+
+export interface SelectOption<T> {
+  readonly label: string;
+  readonly value: T;
+}
+
+export const MAX_CHARACTERS = 1_000_000;
+
+export function format(timestamp: Date | undefined): string {
+  return timestamp ? `${dateFormat(timestamp, 'HH:MM:ss.l')} -> ` : '';
+}
 
 export function messagesToLines(
   messages: string[],
@@ -8,7 +31,7 @@ export function messagesToLines(
 ): [Line[], number] {
   const linesToAdd: Line[] = prevLines.length
     ? [prevLines[prevLines.length - 1]]
-    : [{ message: '', lineLen: 0 }];
+    : [{ message: '', length: 0 }];
   if (!(Symbol.iterator in Object(messages))) return [prevLines, charCount];
 
   for (const message of messages) {
@@ -21,12 +44,12 @@ export function messagesToLines(
       linesToAdd.push({
         message,
         timestamp: new Date(),
-        lineLen: messageLen,
+        length: messageLen,
       });
     } else {
       // concatenate to the last line
       linesToAdd[linesToAdd.length - 1].message += message;
-      linesToAdd[linesToAdd.length - 1].lineLen += messageLen;
+      linesToAdd[linesToAdd.length - 1].length += messageLen;
       if (!linesToAdd[linesToAdd.length - 1].timestamp) {
         linesToAdd[linesToAdd.length - 1].timestamp = new Date();
       }
@@ -40,12 +63,12 @@ export function messagesToLines(
 export function truncateLines(
   lines: Line[],
   charCount: number,
-  maxCharacters: number = SerialMonitorOutput.MAX_CHARACTERS
+  maxCharacters: number = MAX_CHARACTERS
 ): [Line[], number] {
   let charsToDelete = charCount - maxCharacters;
   let lineIndex = 0;
   while (charsToDelete > 0 || lineIndex > 0) {
-    const firstLineLength = lines[lineIndex]?.lineLen;
+    const firstLineLength = lines[lineIndex]?.length;
 
     if (charsToDelete >= firstLineLength) {
       // every time a full line to delete is found, move the index.

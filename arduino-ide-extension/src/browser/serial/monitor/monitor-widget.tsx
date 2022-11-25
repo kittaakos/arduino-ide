@@ -30,8 +30,8 @@ import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { MonitorModel } from '../../monitor-model';
 import { ArduinoSelect } from '../../widgets/arduino-select';
 import { MonitorResourceProvider } from './monitor-resource-provider';
+import { messagesToLines, SelectOption, truncateLines } from './monitor-utils';
 import { SerialMonitorSendInput } from './serial-monitor-send-input';
-import { SerialMonitorOutput } from './serial-monitor-send-output';
 
 @injectable()
 export class MonitorWidget extends BaseWidget {
@@ -136,9 +136,9 @@ export class MonitorWidget extends BaseWidget {
       this.monitorManagerProxy.onMonitorSettingsDidChange((settings) =>
         this.updateSettings(settings)
       ),
-      this.monitorManagerProxy.onMessagesReceived(({ messages }) => {
-        messages.forEach((message) => this.appendContent({ message }));
-      }),
+      this.monitorManagerProxy.onMessagesReceived(({ messages }) =>
+        this.appendContent(messages)
+      ),
     ]);
     this.getCurrentSettings().then((settings) => this.updateSettings(settings));
     this.monitorManagerProxy.startMonitor();
@@ -222,7 +222,7 @@ export class MonitorWidget extends BaseWidget {
     this.update();
   }
 
-  protected get lineEndings(): SerialMonitorOutput.SelectOption<MonitorEOL>[] {
+  protected get lineEndings(): SelectOption<MonitorEOL>[] {
     return [
       {
         label: nls.localize('arduino/serial/noLineEndings', 'No Line Ending'),
@@ -335,7 +335,7 @@ export class MonitorWidget extends BaseWidget {
     this.monitorManagerProxy.send(value);
 
   private readonly onChangeLineEnding = (
-    option: SerialMonitorOutput.SelectOption<MonitorEOL>
+    option: SelectOption<MonitorEOL>
   ): void => {
     this.monitorModel.lineEnding = option.value;
   };
@@ -425,39 +425,33 @@ export class MonitorWidget extends BaseWidget {
     return undefined;
   }
 
-  private async appendContent({ message }: { message: string }): Promise<void> {
+  private async appendContent(messages: string[]): Promise<void> {
     return this.appendContentQueue.add(async () => {
       const textModel = (
         await this.resourceProvider.resource.editorModelRef.promise
       ).object.textEditorModel;
-      const lastLine = textModel.getLineCount();
-      const lastLineMaxColumn = textModel.getLineMaxColumn(lastLine);
-      const position = new monaco.Position(lastLine, lastLineMaxColumn);
-      const range = new monaco.Range(
-        position.lineNumber,
-        position.column,
-        position.lineNumber,
-        position.column
+      const oldLines = textModel
+        .getLinesContent()
+        .map((line) => ({ message: line, length: line.length }));
+      const oldCharCount = textModel.getValueLength(
+        monaco.editor.EndOfLinePreference.LF
       );
-      const edits = [
-        {
-          range,
-          text: message,
-          forceMoveMarkers: true,
-        },
-      ];
-      // We do not use `pushEditOperations` as we do not need undo/redo support. VS Code uses `applyEdits` too.
-      // https://github.com/microsoft/vscode/blob/dc348340fd1a6c583cb63a1e7e6b4fd657e01e01/src/vs/workbench/services/output/common/outputChannelModel.ts#L108-L115
-      textModel.applyEdits(edits);
+      const [newLines, totalCharCount] = messagesToLines(
+        messages,
+        oldLines,
+        oldCharCount
+      );
+      const [lines] = truncateLines(newLines, totalCharCount);
+      textModel.setValue(lines.map(({ message }) => message.trim()).join('\n'));
     });
   }
 }
 
-const defaultLineEnding: SerialMonitorOutput.SelectOption<MonitorEOL> = {
+const defaultLineEnding: SelectOption<MonitorEOL> = {
   label: nls.localize('arduino/serial/newLine', 'New Line'),
   value: '\n',
 };
-const lineEndings: SerialMonitorOutput.SelectOption<MonitorEOL>[] = [
+const lineEndings: SelectOption<MonitorEOL>[] = [
   {
     label: nls.localize('arduino/serial/noLineEndings', 'No Line Ending'),
     value: '',

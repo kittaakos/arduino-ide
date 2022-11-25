@@ -1,9 +1,9 @@
 import { expect } from 'chai';
 import {
+  Line,
   messagesToLines,
   truncateLines,
 } from '../../browser/serial/monitor/monitor-utils';
-import { Line } from '../../browser/serial/monitor/serial-monitor-send-output';
 import { set, reset } from 'mockdate';
 
 type TestLine = {
@@ -21,41 +21,41 @@ const date = new Date();
 const testLines: TestLine[] = [
   {
     messages: ['Hello'],
-    expected: { lines: [{ message: 'Hello', lineLen: 5 }], charCount: 5 },
+    expected: { lines: [{ message: 'Hello', length: 5 }], charCount: 5 },
   },
   {
     messages: ['Hello', 'Dog!'],
-    expected: { lines: [{ message: 'HelloDog!', lineLen: 9 }], charCount: 9 },
+    expected: { lines: [{ message: 'HelloDog!', length: 9 }], charCount: 9 },
   },
   {
     messages: ['Hello\n', 'Dog!'],
     expected: {
       lines: [
-        { message: 'Hello\n', lineLen: 6 },
-        { message: 'Dog!', lineLen: 4 },
+        { message: 'Hello\n', length: 6 },
+        { message: 'Dog!', length: 4 },
       ],
       charCount: 10,
     },
   },
   {
     messages: ['Dog!'],
-    prevLines: { lines: [{ message: 'Hello\n', lineLen: 6 }], charCount: 6 },
+    prevLines: { lines: [{ message: 'Hello\n', length: 6 }], charCount: 6 },
     expected: {
       lines: [
-        { message: 'Hello\n', lineLen: 6 },
-        { message: 'Dog!', lineLen: 4 },
+        { message: 'Hello\n', length: 6 },
+        { message: 'Dog!', length: 4 },
       ],
       charCount: 10,
     },
   },
   {
     messages: [' Dog!\n', " Who's a good ", 'boy?\n', "You're a good boy!"],
-    prevLines: { lines: [{ message: 'Hello', lineLen: 5 }], charCount: 5 },
+    prevLines: { lines: [{ message: 'Hello', length: 5 }], charCount: 5 },
     expected: {
       lines: [
-        { message: 'Hello Dog!\n', lineLen: 11 },
-        { message: " Who's a good boy?\n", lineLen: 19 },
-        { message: "You're a good boy!", lineLen: 8 },
+        { message: 'Hello Dog!\n', length: 11 },
+        { message: " Who's a good boy?\n", length: 19 },
+        { message: "You're a good boy!", length: 8 },
       ],
       charCount: 48,
     },
@@ -63,8 +63,8 @@ const testLines: TestLine[] = [
       maxCharacters: 20,
       charCount: 20,
       lines: [
-        { message: '?\n', lineLen: 2 },
-        { message: "You're a good boy!", lineLen: 8 },
+        { message: '?\n', length: 2 },
+        { message: "You're a good boy!", length: 8 },
       ],
     },
   },
@@ -72,16 +72,16 @@ const testLines: TestLine[] = [
     messages: ['boy?\n', "You're a good boy!"],
     prevLines: {
       lines: [
-        { message: 'Hello Dog!\n', lineLen: 11 },
-        { message: " Who's a good ", lineLen: 14 },
+        { message: 'Hello Dog!\n', length: 11 },
+        { message: " Who's a good ", length: 14 },
       ],
       charCount: 25,
     },
     expected: {
       lines: [
-        { message: 'Hello Dog!\n', lineLen: 11 },
-        { message: " Who's a good boy?\n", lineLen: 19 },
-        { message: "You're a good boy!", lineLen: 8 },
+        { message: 'Hello Dog!\n', length: 11 },
+        { message: " Who's a good boy?\n", length: 19 },
+        { message: "You're a good boy!", length: 8 },
       ],
       charCount: 48,
     },
@@ -89,22 +89,22 @@ const testLines: TestLine[] = [
       maxCharacters: 20,
       charCount: 20,
       lines: [
-        { message: '?\n', lineLen: 2 },
-        { message: "You're a good boy!", lineLen: 8 },
+        { message: '?\n', length: 2 },
+        { message: "You're a good boy!", length: 8 },
       ],
     },
   },
   {
     messages: ["Who's a good boy?\n", 'Yo'],
     prevLines: {
-      lines: [{ message: 'Hello Dog!\n', lineLen: 11 }],
+      lines: [{ message: 'Hello Dog!\n', length: 11 }],
       charCount: 11,
     },
     expected: {
       lines: [
-        { message: 'Hello Dog!\n', lineLen: 11 },
-        { message: "Who's a good boy?\n", lineLen: 18 },
-        { message: 'Yo', lineLen: 2 },
+        { message: 'Hello Dog!\n', length: 11 },
+        { message: "Who's a good boy?\n", length: 18 },
+        { message: 'Yo', length: 2 },
       ],
       charCount: 31,
     },
@@ -112,8 +112,8 @@ const testLines: TestLine[] = [
       maxCharacters: 20,
       charCount: 20,
       lines: [
-        { message: "Who's a good boy?\n", lineLen: 18 },
-        { message: 'Yo', lineLen: 2 },
+        { message: "Who's a good boy?\n", length: 18 },
+        { message: 'Yo', length: 2 },
       ],
     },
   },
