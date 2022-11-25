@@ -30,7 +30,7 @@ import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { MonitorModel } from '../../monitor-model';
 import { ArduinoSelect } from '../../widgets/arduino-select';
 import { MonitorResourceProvider } from './monitor-resource-provider';
-import { messagesToLines, SelectOption, truncateLines } from './monitor-utils';
+import { SelectOption } from './monitor-utils';
 import { SerialMonitorSendInput } from './serial-monitor-send-input';
 
 @injectable()
@@ -430,19 +430,19 @@ export class MonitorWidget extends BaseWidget {
       const textModel = (
         await this.resourceProvider.resource.editorModelRef.promise
       ).object.textEditorModel;
-      const oldLines = textModel
-        .getLinesContent()
-        .map((line) => ({ message: line, length: line.length }));
-      const oldCharCount = textModel.getValueLength(
-        monaco.editor.EndOfLinePreference.LF
-      );
-      const [newLines, totalCharCount] = messagesToLines(
-        messages,
-        oldLines,
-        oldCharCount
-      );
-      const [lines] = truncateLines(newLines, totalCharCount);
-      textModel.setValue(lines.map(({ message }) => message.trim()).join('\n'));
+      const end = textModel.getFullModelRange().getEndPosition();
+      textModel.applyEdits([
+        {
+          range: new monaco.Range(
+            end.lineNumber,
+            end.column,
+            end.lineNumber,
+            end.column
+          ),
+          text: messages.join(''),
+          forceMoveMarkers: false,
+        },
+      ]);
     });
   }
 }
