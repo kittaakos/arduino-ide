@@ -76,7 +76,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
 
   // List of messages received from the running pluggable monitor.
   // These are flushed from time to time to the frontend.
-  private messages: string[] = [];
+  private messages: Uint8Array[] = [];
 
   // Handles messages received from the frontend via websocket.
   private onMessageReceived?: Disposable;
@@ -370,11 +370,9 @@ export class MonitorService extends CoreClientAware implements Disposable {
                 return;
               }
               const data = monitorResponse.getRxData();
-              const message =
-                typeof data === 'string'
-                  ? data
-                  : this.streamingTextDecoder.decode(data, { stream: true });
-              this.messages.push(...splitLines(message));
+              this.messages.push(
+                typeof data === 'string' ? new TextEncoder().encode(data) : data
+              );
             },
           },
         ];
@@ -701,7 +699,9 @@ export class MonitorService extends CoreClientAware implements Disposable {
     if (!this.flushMessagesInterval) {
       const flushMessagesToFrontend = () => {
         if (this.messages.length) {
-          this.webSocketProvider.sendMessage(JSON.stringify(this.messages));
+          this.webSocketProvider.sendMessage(
+            JSON.stringify([Buffer.concat(this.messages).toString('utf8')])
+          );
           this.messages = [];
         }
       };
@@ -770,13 +770,4 @@ export class MonitorService extends CoreClientAware implements Disposable {
       this.onMessageReceived = undefined;
     }
   }
-}
-
-/**
- * Splits a string into an array without removing newline char.
- * @param s string to split into lines
- * @returns an lines array
- */
-function splitLines(s: string): string[] {
-  return s.split(/(?<=\n)/);
 }
