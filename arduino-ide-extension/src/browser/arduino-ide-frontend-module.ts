@@ -159,7 +159,10 @@ import {
   MonitorManagerProxyFactory,
   MonitorManagerProxyPath,
 } from '../common/protocol';
-import { MonacoTextModelService as TheiaMonacoTextModelService } from '@theia/monaco/lib/browser/monaco-text-model-service';
+import {
+  MonacoEditorModelFactory,
+  MonacoTextModelService as TheiaMonacoTextModelService,
+} from '@theia/monaco/lib/browser/monaco-text-model-service';
 import { MonacoTextModelService } from './theia/monaco/monaco-text-model-service';
 import { ResponseServiceImpl } from './response-service-impl';
 import {
@@ -253,7 +256,7 @@ import {
   UserFieldsDialog,
   UserFieldsDialogProps,
 } from './dialogs/user-fields/user-fields-dialog';
-import { nls } from '@theia/core/lib/common';
+import { nls, ResourceResolver } from '@theia/core/lib/common';
 import { IDEUpdaterCommands } from './ide-updater/ide-updater-commands';
 import {
   IDEUpdater,
@@ -317,6 +320,7 @@ import {
 } from './widgets/component-list/filter-renderer';
 import { CheckForUpdates } from './contributions/check-for-updates';
 import { OutputEditorFactory } from './theia/output/output-editor-factory';
+import { OutputEditorFactory as TheiaOutputEditorFactory } from '@theia/output/lib/browser/output-editor-factory';
 import { StartupTaskProvider } from '../electron-common/startup-task';
 import { DeleteSketch } from './contributions/delete-sketch';
 import { UserFields } from './contributions/user-fields';
@@ -354,6 +358,10 @@ import { FileResourceResolver as TheiaFileResourceResolver } from '@theia/filesy
 import { StylingParticipant } from '@theia/core/lib/browser/styling-service';
 import { MonacoEditorMenuContribution } from './theia/monaco/monaco-menu';
 import { MonacoEditorMenuContribution as TheiaMonacoEditorMenuContribution } from '@theia/monaco/lib/browser/monaco-menu';
+import { MonitorResourceProvider } from './serial/monitor/monitor-resource-provider';
+import { MonitorEditorFactory } from './serial/monitor/monitor-editor-factory';
+import { MonitorEditorModelFactory } from './serial/monitor/monitor-editor-model-factory';
+import { MonitorContextMenuService } from './serial/monitor/monitor-context-menu-service';
 
 // Hack to fix copy/cut/paste issue after electron version update in Theia.
 // https://github.com/eclipse-theia/theia/issues/12487
@@ -501,9 +509,9 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(MonitorModel).toSelf().inSingletonScope();
   bindViewContribution(bind, MonitorViewContribution);
   bind(TabBarToolbarContribution).toService(MonitorViewContribution);
-  bind(WidgetFactory).toDynamicValue((context) => ({
+  bind(WidgetFactory).toDynamicValue(({ container }) => ({
     id: MonitorWidget.ID,
-    createWidget: () => context.container.get(MonitorWidget),
+    createWidget: () => container.get(MonitorWidget),
   }));
 
   bind(MonitorManagerProxyFactory).toFactory(
@@ -526,6 +534,15 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(MonitorManagerProxyClient)
     .to(MonitorManagerProxyClientImpl)
     .inSingletonScope();
+
+  bind(MonitorResourceProvider).toSelf().inSingletonScope();
+  bind(ResourceResolver).toService(MonitorResourceProvider);
+  bind(MonitorEditorFactory).toSelf().inSingletonScope();
+  bind(MonacoEditorFactory).toService(MonitorEditorFactory);
+  bind(MonacoEditorModelFactory)
+    .to(MonitorEditorModelFactory)
+    .inSingletonScope();
+  bind(MonitorContextMenuService).toSelf().inSingletonScope();
 
   bind(WorkspaceService).toSelf().inSingletonScope();
   rebind(TheiaWorkspaceService).toService(WorkspaceService);
@@ -639,8 +656,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
 
   // To disable the highlighting of non-unicode characters in the _Output_ view
   bind(OutputEditorFactory).toSelf().inSingletonScope();
-  // Rebind to `TheiaOutputEditorFactory` when https://github.com/eclipse-theia/theia/pull/11615 is available.
-  rebind(MonacoEditorFactory).toService(OutputEditorFactory);
+  rebind(TheiaOutputEditorFactory).toService(OutputEditorFactory);
 
   bind(ArduinoDaemon)
     .toDynamicValue((context) =>

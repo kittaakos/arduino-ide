@@ -1,6 +1,11 @@
 import * as React from '@theia/core/shared/react';
 import { injectable, inject } from '@theia/core/shared/inversify';
-import { AbstractViewContribution, codicon } from '@theia/core/lib/browser';
+import {
+  AbstractViewContribution,
+  codicon,
+  CommonCommands,
+  Widget,
+} from '@theia/core/lib/browser';
 import { MonitorWidget } from './monitor-widget';
 import { MenuModelRegistry, Command, CommandRegistry } from '@theia/core';
 import {
@@ -13,6 +18,8 @@ import { nls } from '@theia/core/lib/common';
 import { Event } from '@theia/core/lib/common/event';
 import { MonitorModel } from '../../monitor-model';
 import { MonitorManagerProxyClient } from '../../../common/protocol';
+import { MonitorContextMenu } from './monitor-context-menu-service';
+import { ClipboardService } from '@theia/core/lib/browser/clipboard-service';
 
 export namespace SerialMonitor {
   export namespace Commands {
@@ -37,7 +44,10 @@ export namespace SerialMonitor {
         iconClass: codicon('clear-all'),
       },
       'vscode/output.contribution/clearOutput.label'
-    );
+    ) as Command & { label: string };
+    export const COPY_ALL: Command = {
+      id: 'serial-monitor-copy-all',
+    };
   }
 }
 
@@ -50,6 +60,9 @@ export class MonitorViewContribution
   static readonly TOGGLE_SERIAL_MONITOR_TOOLBAR =
     MonitorWidget.ID + ':toggle-toolbar';
   static readonly RESET_SERIAL_MONITOR = MonitorWidget.ID + ':reset';
+
+  @inject(ClipboardService)
+  private readonly clipboardService: ClipboardService;
 
   constructor(
     @inject(MonitorModel)
@@ -78,6 +91,17 @@ export class MonitorViewContribution
         order: '5',
       });
     }
+    menus.registerMenuAction(MonitorContextMenu.TEXT_EDIT_GROUP, {
+      commandId: CommonCommands.COPY.id,
+    });
+    menus.registerMenuAction(MonitorContextMenu.TEXT_EDIT_GROUP, {
+      commandId: SerialMonitor.Commands.COPY_ALL.id,
+      label: nls.localizeByDefault('Copy All'),
+    });
+    menus.registerMenuAction(MonitorContextMenu.WIDGET_GROUP, {
+      commandId: SerialMonitor.Commands.CLEAR_OUTPUT.id,
+      label: nls.localizeByDefault('Clear Output'),
+    });
   }
 
   registerToolbarItems(registry: TabBarToolbarRegistry): void {
@@ -105,12 +129,25 @@ export class MonitorViewContribution
 
   override registerCommands(commands: CommandRegistry): void {
     commands.registerCommand(SerialMonitor.Commands.CLEAR_OUTPUT, {
-      isEnabled: (widget) => widget instanceof MonitorWidget,
-      isVisible: (widget) => widget instanceof MonitorWidget,
-      execute: (widget) => {
-        if (widget instanceof MonitorWidget) {
-          widget.clearConsole();
+      isEnabled: (arg) => {
+        if (arg instanceof Widget) {
+          return arg instanceof MonitorWidget;
         }
+        return this.shell.currentWidget instanceof MonitorWidget;
+      },
+      isVisible: (arg) => {
+        if (arg instanceof Widget) {
+          return arg instanceof MonitorWidget;
+        }
+        return this.shell.currentWidget instanceof MonitorWidget;
+      },
+      execute: () => {
+        this.widget.then((widget) => {
+          this.withWidget(widget, (output) => {
+            output.clearConsole();
+            return true;
+          });
+        });
       },
     });
     if (this.toggleCommand) {
@@ -130,6 +167,14 @@ export class MonitorViewContribution
       { id: MonitorViewContribution.RESET_SERIAL_MONITOR },
       { execute: () => this.reset() }
     );
+    commands.registerCommand(SerialMonitor.Commands.COPY_ALL, {
+      execute: () => {
+        const text = this.tryGetWidget()?.text;
+        if (text) {
+          this.clipboardService.writeText(text);
+        }
+      },
+    });
   }
 
   protected async toggle(): Promise<void> {
@@ -190,5 +235,12 @@ export class MonitorViewContribution
   protected readonly toggleTimestamp = () => this.doToggleTimestamp();
   protected async doToggleTimestamp(): Promise<void> {
     this.model.toggleTimestamp();
+  }
+
+  private withWidget(
+    widget: Widget | undefined = this.tryGetWidget(),
+    predicate: (monitorWidget: MonitorWidget) => boolean = () => true
+  ): boolean | false {
+    return widget instanceof MonitorWidget ? predicate(widget) : false;
   }
 }
