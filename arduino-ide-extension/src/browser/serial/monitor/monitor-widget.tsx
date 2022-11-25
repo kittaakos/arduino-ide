@@ -440,7 +440,7 @@ export class MonitorWidget extends BaseWidget {
             end.column
           ),
           text: messages.join(''),
-          forceMoveMarkers: false,
+          forceMoveMarkers: true,
         },
       ]);
     });
