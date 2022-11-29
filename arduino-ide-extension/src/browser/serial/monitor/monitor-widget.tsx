@@ -110,6 +110,7 @@ export class MonitorWidget extends BaseWidget {
         this.appendContentQueue.pause();
         this.appendContentQueue.clear();
       }),
+      Disposable.create(() => this.clearConsole()),
     ]);
   }
 
