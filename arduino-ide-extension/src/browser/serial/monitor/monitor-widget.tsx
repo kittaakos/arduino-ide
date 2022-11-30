@@ -15,7 +15,7 @@ import {
   postConstruct,
 } from '@theia/core/shared/inversify';
 import * as React from '@theia/core/shared/react';
-import { Root, createRoot } from '@theia/core/shared/react-dom/client';
+import { createRoot, Root } from '@theia/core/shared/react-dom/client';
 import { EditorWidget } from '@theia/editor/lib/browser';
 import * as monaco from '@theia/monaco-editor-core';
 import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
@@ -33,6 +33,7 @@ import { ArduinoSelect } from '../../widgets/arduino-select';
 import { MonitorResourceProvider } from './monitor-resource-provider';
 import { SelectOption } from './monitor-utils';
 import { SerialMonitorSendInput } from './serial-monitor-send-input';
+import debounce = require('lodash.debounce');
 
 @injectable()
 export class MonitorWidget extends BaseWidget {
@@ -41,27 +42,6 @@ export class MonitorWidget extends BaseWidget {
     'arduino/common/serialMonitor',
     'Serial Monitor'
   );
-
-  private settings: MonitorSettings = {};
-  private widgetHeight: number;
-  /**
-   * Do not touch or use it. It is for setting the focus on the `input` after the widget activation.
-   */
-  private focusNode: HTMLElement | undefined;
-  /**
-   * Guard against re-rendering the view after the close was requested.
-   * See: https://github.com/eclipse-theia/theia/issues/6704
-   */
-  private closing = false;
-  private readonly contentNode: HTMLDivElement;
-  private readonly headerRoot: Root;
-  private readonly editorContainer: DockPanel;
-  protected readonly appendContentQueue = new PQueue({
-    autoStart: true,
-    concurrency: 1,
-  });
-
-  private maxLineNumber: number;
 
   @inject(MonitorModel)
   private readonly monitorModel: MonitorModel;
@@ -82,6 +62,26 @@ export class MonitorWidget extends BaseWidget {
   private readonly resourceProvider: MonitorResourceProvider;
   @inject(ArduinoPreferences)
   private readonly preference: ArduinoPreferences;
+
+  private settings: MonitorSettings = {};
+  private widgetHeight: number;
+  /**
+   * Do not touch or use it. It is for setting the focus on the `input` after the widget activation.
+   */
+  private focusNode: HTMLElement | undefined;
+  /**
+   * Guard against re-rendering the view after the close was requested.
+   * See: https://github.com/eclipse-theia/theia/issues/6704
+   */
+  private closing = false;
+  private maxLineNumber: number;
+  private readonly contentNode: HTMLDivElement;
+  private readonly headerRoot: Root;
+  private readonly editorContainer: DockPanel;
+  protected readonly appendContentQueue = new PQueue({
+    autoStart: true,
+    concurrency: 1,
+  });
 
   constructor() {
     super();
@@ -374,7 +374,7 @@ export class MonitorWidget extends BaseWidget {
     this.toDispose.pushAll([
       Disposable.create(() => widget.close()),
       this.resourceProvider.resource.onDidChangeContents(() => {
-        this.ensureMaxLineNumbers();
+        this.ensureMaxLineNotExceeded();
         this.revealLastLine();
       }),
     ]);
@@ -477,7 +477,7 @@ export class MonitorWidget extends BaseWidget {
 
   private handleDidChangeMaxLineNumber(maxLineNumber: number): void {
     this.maxLineNumber = maxLineNumber;
-    this.appendContent(['']); // This is a NOOP change but will update the model that will fire an event and the line numbers can be adjusted
+    this.appendContent(['']); // This is a NOOP change but will update the model and adjusts the line numbers if required
   }
 
   private handleDidChangeStopRenderingLineAfter(
@@ -486,8 +486,14 @@ export class MonitorWidget extends BaseWidget {
     this.editor?.getControl().updateOptions({ stopRenderingLineAfter });
   }
 
-  private ensureMaxLineNumbers(): void {
-    if (!this.editor) {
+  private readonly ensureMaxLineNotExceeded = debounce(
+    () => this.maybeTrimLines(),
+    16, // ~60Hz
+    { maxWait: 16 }
+  );
+
+  private maybeTrimLines(): void {
+    if (!this.editor || this.maxLineNumber < 0) {
       return;
     }
     this.textModel().then((model) => {

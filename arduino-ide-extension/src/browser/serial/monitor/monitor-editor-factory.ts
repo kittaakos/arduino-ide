@@ -19,7 +19,6 @@ const noMargin = {
   lineDecorationsWidth: 0,
   lineNumbersMinChars: 0,
 } as const;
-
 @injectable()
 export class MonitorEditorFactory extends OutputEditorFactory {
   @inject(MonitorContextMenuService)
@@ -38,6 +37,7 @@ export class MonitorEditorFactory extends OutputEditorFactory {
       ...noMargin,
       stopRenderingLineAfter:
         this.preference['arduino.monitor.stopRenderingLineAfter'],
+      hideCursorInOverviewRuler: true,
     };
   }
 
