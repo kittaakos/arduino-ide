@@ -427,24 +427,40 @@ export class MonitorWidget extends BaseWidget {
   }
 
   private async appendContent(messages: string[]): Promise<void> {
-    return this.appendContentQueue.add(async () => {
-      const textModel = (
-        await this.resourceProvider.resource.editorModelRef.promise
-      ).object.textEditorModel;
-      const end = textModel.getFullModelRange().getEndPosition();
-      textModel.applyEdits([
-        {
-          range: new monaco.Range(
-            end.lineNumber,
-            end.column,
-            end.lineNumber,
-            end.column
-          ),
-          text: messages.join(''),
-          forceMoveMarkers: true,
-        },
-      ]);
-    });
+    const textModel = (
+      await this.resourceProvider.resource.editorModelRef.promise
+    ).object.textEditorModel;
+    return messages
+      .map((message) =>
+        this.appendContentQueue.add(async () => {
+          const end = textModel.getFullModelRange().getEndPosition();
+          const range = monaco.Range.fromPositions(end, end);
+          const text =
+            this.lastMessageDidEndWithCR && this.startsWithNL(message)
+              ? message.substring(1)
+              : message;
+          textModel.applyEdits([
+            {
+              range,
+              text,
+              forceMoveMarkers: true,
+            },
+          ]);
+          this.lastMessageDidEndWithCR = this.endWithCR(message);
+        })
+      )
+      .reduce(async (acc, curr) => {
+        await acc;
+        return curr;
+      }, Promise.resolve());
+  }
+
+  private lastMessageDidEndWithCR = false;
+  private endWithCR(message: string): boolean {
+    return message.charCodeAt(message.length - 1) === 13;
+  }
+  private startsWithNL(message: string): boolean {
+    return message.charCodeAt(0) === 10;
   }
 }
 
