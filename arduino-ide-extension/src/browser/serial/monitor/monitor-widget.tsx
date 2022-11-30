@@ -15,7 +15,7 @@ import {
   postConstruct,
 } from '@theia/core/shared/inversify';
 import * as React from '@theia/core/shared/react';
-import * as ReactDOM from '@theia/core/shared/react-dom';
+import { Root, createRoot } from '@theia/core/shared/react-dom/client';
 import { EditorWidget } from '@theia/editor/lib/browser';
 import * as monaco from '@theia/monaco-editor-core';
 import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
@@ -54,7 +54,7 @@ export class MonitorWidget extends BaseWidget {
    */
   private closing = false;
   private readonly contentNode: HTMLDivElement;
-  private readonly headerNode: HTMLDivElement;
+  private readonly headerRoot: Root;
   private readonly editorContainer: DockPanel;
   protected readonly appendContentQueue = new PQueue({
     autoStart: true,
@@ -94,14 +94,13 @@ export class MonitorWidget extends BaseWidget {
     this.toDispose.push(
       Disposable.create(() => this.monitorManagerProxy.disconnect())
     );
-
     this.contentNode = document.createElement('div');
     this.contentNode.classList.add('content');
-    this.headerNode = document.createElement('div');
-    this.headerNode.classList.add('header');
-    this.contentNode.appendChild(this.headerNode);
+    const headerNode = document.createElement('div');
+    headerNode.classList.add('header');
+    this.contentNode.appendChild(headerNode);
+    this.headerRoot = createRoot(headerNode);
     this.node.appendChild(this.contentNode);
-
     this.editorContainer = new NoopDragOverDockPanel({
       spacing: 0,
       mode: 'single-document',
@@ -169,9 +168,8 @@ export class MonitorWidget extends BaseWidget {
 
   protected override onAfterAttach(message: Message): void {
     super.onAfterAttach(message);
-    ReactDOM.render(
-      <React.Fragment>{this.renderHeader()}</React.Fragment>,
-      this.headerNode
+    this.headerRoot.render(
+      <React.Fragment>{this.renderHeader()}</React.Fragment>
     );
     Widget.attach(this.editorContainer, this.contentNode);
     this.toDisposeOnDetach.push(
