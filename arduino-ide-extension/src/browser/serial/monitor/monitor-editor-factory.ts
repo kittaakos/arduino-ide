@@ -6,14 +6,26 @@ import {
   MonacoEditor,
 } from '@theia/monaco/lib/browser/monaco-editor';
 import { MonacoEditorModel } from '@theia/monaco/lib/browser/monaco-editor-model';
+import { ArduinoPreferences } from '../../arduino-preferences';
 import { OutputEditorFactory } from '../../theia/output/output-editor-factory';
 import { MonitorContextMenuService } from './monitor-context-menu-service';
 import { MonitorUri } from './monitor-uri';
+
+// To hide the margin in the editor https://github.com/microsoft/monaco-editor/issues/1960
+const noMargin = {
+  lineNumbers: 'off',
+  glyphMargin: false,
+  folding: false,
+  lineDecorationsWidth: 0,
+  lineNumbersMinChars: 0,
+} as const;
 
 @injectable()
 export class MonitorEditorFactory extends OutputEditorFactory {
   @inject(MonitorContextMenuService)
   private readonly monitorContextMenuService: MonacoContextMenuService;
+  @inject(ArduinoPreferences)
+  private readonly preference: ArduinoPreferences;
 
   override readonly scheme: string = MonitorUri.scheme;
 
@@ -23,12 +35,9 @@ export class MonitorEditorFactory extends OutputEditorFactory {
   ): MonacoEditor.IOptions {
     return {
       ...super.createOptions(model, defaultOptions),
-      // To hide the margin in the editor https://github.com/microsoft/monaco-editor/issues/1960
-      lineNumbers: 'off',
-      glyphMargin: false,
-      folding: false,
-      lineDecorationsWidth: 0,
-      lineNumbersMinChars: 0,
+      ...noMargin,
+      stopRenderingLineAfter:
+        this.preference['arduino.monitor.stopRenderingLineAfter'],
     };
   }
 

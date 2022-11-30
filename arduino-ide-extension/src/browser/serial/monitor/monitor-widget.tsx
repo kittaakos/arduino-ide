@@ -26,6 +26,7 @@ import {
   MonitorManagerProxyClient,
   MonitorSettings,
 } from '../../../common/protocol';
+import { ArduinoPreferences } from '../../arduino-preferences';
 import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { MonitorModel } from '../../monitor-model';
 import { ArduinoSelect } from '../../widgets/arduino-select';
@@ -51,14 +52,16 @@ export class MonitorWidget extends BaseWidget {
    * Guard against re-rendering the view after the close was requested.
    * See: https://github.com/eclipse-theia/theia/issues/6704
    */
+  private closing = false;
   private readonly contentNode: HTMLDivElement;
   private readonly headerNode: HTMLDivElement;
   private readonly editorContainer: DockPanel;
-  private closing = false;
   protected readonly appendContentQueue = new PQueue({
     autoStart: true,
     concurrency: 1,
   });
+
+  private maxLineNumber: number;
 
   @inject(MonitorModel)
   private readonly monitorModel: MonitorModel;
@@ -77,6 +80,8 @@ export class MonitorWidget extends BaseWidget {
   private readonly editorProvider: MonacoEditorProvider;
   @inject(MonitorResourceProvider)
   private readonly resourceProvider: MonitorResourceProvider;
+  @inject(ArduinoPreferences)
+  private readonly preference: ArduinoPreferences;
 
   constructor() {
     super();
@@ -103,7 +108,10 @@ export class MonitorWidget extends BaseWidget {
     });
     this.editorContainer.addClass('editor-container');
     this.editorContainer.node.tabIndex = -1;
+  }
 
+  @postConstruct()
+  protected init(): void {
     this.toDispose.pushAll([
       Disposable.create(() => this.monitorManagerProxy.disconnect()),
       Disposable.create(() => {
@@ -111,20 +119,20 @@ export class MonitorWidget extends BaseWidget {
         this.appendContentQueue.clear();
       }),
       Disposable.create(() => this.clearConsole()),
-    ]);
-  }
-
-  @postConstruct()
-  protected init(): void {
-    this.toDisposeOnReset.dispose();
-    this.toDisposeOnReset.pushAll([
-      Disposable.create(() => this.monitorManagerProxy.disconnect()),
-      this.monitorModel.onChange(() => this.update()),
-      this.monitorManagerProxy.onMonitorSettingsDidChange((event) =>
-        this.updateSettings(event)
-      ),
-    ]);
-    this.toDispose.pushAll([
+      this.preference.onPreferenceChanged(({ preferenceName, newValue }) => {
+        if (typeof newValue === 'number') {
+          switch (preferenceName) {
+            case 'arduino.monitor.maxLineNumber': {
+              this.handleDidChangeMaxLineNumber(newValue);
+              return;
+            }
+            case 'arduino.monitor.stopRenderingLineAfter': {
+              this.handleDidChangeStopRenderingLineAfter(newValue);
+              return;
+            }
+          }
+        }
+      }),
       this.monitorModel.onChange(async ({ property }) => {
         if (property === 'connected') {
           const { connectionStatus } = this.monitorModel;
@@ -141,6 +149,7 @@ export class MonitorWidget extends BaseWidget {
         this.appendContent(messages)
       ),
     ]);
+    this.maxLineNumber = this.preference['arduino.monitor.maxLineNumber'];
     this.getCurrentSettings().then((settings) => this.updateSettings(settings));
     this.monitorManagerProxy.startMonitor();
     this.startMonitor();
@@ -366,9 +375,10 @@ export class MonitorWidget extends BaseWidget {
     this.editorContainer.addWidget(widget);
     this.toDispose.pushAll([
       Disposable.create(() => widget.close()),
-      this.resourceProvider.resource.onDidChangeContents(() =>
-        this.revealLastLine()
-      ),
+      this.resourceProvider.resource.onDidChangeContents(() => {
+        this.ensureMaxLineNumbers();
+        this.revealLastLine();
+      }),
     ]);
     if (!preserveFocus) {
       this.activate();
@@ -427,9 +437,7 @@ export class MonitorWidget extends BaseWidget {
   }
 
   private async appendContent(messages: string[]): Promise<void> {
-    const textModel = (
-      await this.resourceProvider.resource.editorModelRef.promise
-    ).object.textEditorModel;
+    const textModel = await this.textModel();
     return messages
       .map((message) =>
         this.appendContentQueue.add(async () => {
@@ -456,11 +464,46 @@ export class MonitorWidget extends BaseWidget {
   }
 
   private lastMessageDidEndWithCR = false;
+  private async textModel() {
+    return (await this.resourceProvider.resource.editorModelRef.promise).object
+      .textEditorModel;
+  }
+
   private endWithCR(message: string): boolean {
     return message.charCodeAt(message.length - 1) === 13;
   }
+
   private startsWithNL(message: string): boolean {
     return message.charCodeAt(0) === 10;
+  }
+
+  private handleDidChangeMaxLineNumber(maxLineNumber: number): void {
+    this.maxLineNumber = maxLineNumber;
+    this.appendContent(['']); // This is a NOOP change but will update the model that will fire an event and the line numbers can be adjusted
+  }
+
+  private handleDidChangeStopRenderingLineAfter(
+    stopRenderingLineAfter: number
+  ): void {
+    this.editor?.getControl().updateOptions({ stopRenderingLineAfter });
+  }
+
+  private ensureMaxLineNumbers(): void {
+    if (!this.editor) {
+      return;
+    }
+    this.textModel().then((model) => {
+      const lineCount = model.getLineCount();
+      const linesToRemove = lineCount - this.maxLineNumber;
+      if (linesToRemove > 0) {
+        model.applyEdits([
+          {
+            range: new monaco.Range(1, 1, linesToRemove + 1, 1),
+            text: null,
+          },
+        ]);
+      }
+    });
   }
 }
 

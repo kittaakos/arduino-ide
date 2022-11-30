@@ -381,6 +381,10 @@
       "language.log": "True if the Arduino Language Server should generate log files into the sketch folder. Otherwise, false. It's false by default.",
       "language.realTimeDiagnostics": "If true, the language server provides real-time diagnostics when typing in the editor. It's false by default.",
       "manualProxy": "Manual proxy configuration",
+      "monitor": {
+        "inoBlueprint": "Performance guard: Stop rendering a line after x characters in the _Serial Monitor_ view. Defaults to 1000. Use -1 to never stop rendering.",
+        "stopRenderingLineAfter": "Performance guard: Stop rendering a line after x characters in the _Serial Monitor_ view. Defaults to 1000. Use -1 to never stop rendering."
+      },
       "network": "Network",
       "newSketchbookLocation": "Select new sketchbook location",
       "noCliConfig": "Could not load the CLI configuration",

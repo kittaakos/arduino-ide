@@ -26,7 +26,6 @@ export class MonitorResourceProvider implements ResourceResolver {
     if (this.resource.uri.toString() === uri.toString()) {
       return this.resource;
     }
-    // Note: this is totally normal. This is the way Theia loads a resource.
     throw new Error(`Cannot handle URI: ${uri.toString()}`);
   }
 }
