@@ -38,3 +38,12 @@ export function uint8ArrayToString(uint8Array: Uint8Array): string {
 export function stringToUint8Array(text: string): Uint8Array {
   return Uint8Array.from(text, (char) => char.charCodeAt(0));
 }
+
+/**
+ * Splits a string into an array without removing newline char.
+ * @param s string to split into lines
+ * @returns an lines array
+ */
+export function splitLines(s: string): string[] {
+  return s.split(/(?<=\n)/);
+}

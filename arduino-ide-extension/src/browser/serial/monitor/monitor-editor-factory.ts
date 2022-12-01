@@ -38,6 +38,13 @@ export class MonitorEditorFactory extends OutputEditorFactory {
       stopRenderingLineAfter:
         this.preference['arduino.monitor.stopRenderingLineAfter'],
       hideCursorInOverviewRuler: true,
+      trimAutoWhitespace: false,
+      maxTokenizationLineLength: 0,
+      cursorBlinking: 'solid',
+      cursorStyle: undefined,
+      domReadOnly: true,
+      renderLineHighlight: 'none',
+      renderValidationDecorations: 'off',
     };
   }
 

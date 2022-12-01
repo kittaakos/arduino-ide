@@ -26,14 +26,14 @@ import {
   MonitorManagerProxyClient,
   MonitorSettings,
 } from '../../../common/protocol';
+import { splitLines } from '../../../common/utils';
 import { ArduinoPreferences } from '../../arduino-preferences';
 import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { MonitorModel } from '../../monitor-model';
 import { ArduinoSelect } from '../../widgets/arduino-select';
 import { MonitorResourceProvider } from './monitor-resource-provider';
-import { SelectOption } from './monitor-utils';
+import { format, SelectOption, timestampLength } from './monitor-utils';
 import { SerialMonitorSendInput } from './serial-monitor-send-input';
-import debounce = require('lodash.debounce');
 
 @injectable()
 export class MonitorWidget extends BaseWidget {
@@ -75,10 +75,13 @@ export class MonitorWidget extends BaseWidget {
    */
   private closing = false;
   private maxLineNumber: number;
+  private shouldHandleNextLeadingNL = false;
+  private removedLinesCount = 0;
+  private readonly lineNumber2Timestamp: Record<number, string>;
   private readonly contentNode: HTMLDivElement;
   private readonly headerRoot: Root;
   private readonly editorContainer: DockPanel;
-  protected readonly appendContentQueue = new PQueue({
+  protected readonly queue = new PQueue({
     autoStart: true,
     concurrency: 1,
   });
@@ -107,6 +110,7 @@ export class MonitorWidget extends BaseWidget {
     });
     this.editorContainer.addClass('editor-container');
     this.editorContainer.node.tabIndex = -1;
+    this.lineNumber2Timestamp = {};
   }
 
   @postConstruct()
@@ -114,8 +118,8 @@ export class MonitorWidget extends BaseWidget {
     this.toDispose.pushAll([
       Disposable.create(() => this.monitorManagerProxy.disconnect()),
       Disposable.create(() => {
-        this.appendContentQueue.pause();
-        this.appendContentQueue.clear();
+        this.queue.pause();
+        this.queue.clear();
       }),
       Disposable.create(() => this.clearConsole()),
       this.preference.onPreferenceChanged(({ preferenceName, newValue }) => {
@@ -123,29 +127,35 @@ export class MonitorWidget extends BaseWidget {
           switch (preferenceName) {
             case 'arduino.monitor.maxLineNumber': {
               this.handleDidChangeMaxLineNumber(newValue);
-              return;
+              break;
             }
             case 'arduino.monitor.stopRenderingLineAfter': {
               this.handleDidChangeStopRenderingLineAfter(newValue);
-              return;
+              break;
             }
           }
         }
       }),
-      this.monitorModel.onChange(async ({ property }) => {
-        if (property === 'connected') {
-          const { connectionStatus } = this.monitorModel;
-          if (connectionStatus === 'not-connected') {
-            await this.clearConsole();
+      this.monitorModel.onChange(({ property }) => {
+        switch (property) {
+          case 'connected': {
+            this.handleDidChangeConnected();
+            break;
+          }
+          case 'timestamp': {
+            this.handleDidChangeTimestamp();
+            break;
+          }
+          default: {
+            this.update();
           }
         }
-        this.update();
       }),
       this.monitorManagerProxy.onMonitorSettingsDidChange((settings) =>
         this.updateSettings(settings)
       ),
       this.monitorManagerProxy.onMessagesReceived(({ messages }) =>
-        this.appendContent(messages)
+        this.appendToTextModel(messages)
       ),
     ]);
     this.maxLineNumber = this.preference['arduino.monitor.maxLineNumber'];
@@ -339,6 +349,226 @@ export class MonitorWidget extends BaseWidget {
     );
   };
 
+  private async refreshEditorWidget(
+    { preserveFocus }: { preserveFocus: boolean } = { preserveFocus: false }
+  ): Promise<void> {
+    const editorWidget = this.editorWidget;
+    if (editorWidget) {
+      if (!preserveFocus) {
+        this.activate();
+        return;
+      }
+    }
+    const widget = await this.createEditorWidget();
+    this.editorContainer.addWidget(widget);
+    const textModel = await this.textModel();
+    this.toDispose.pushAll([
+      Disposable.create(() => widget.close()),
+      textModel.onDidChangeContent(({ changes }) => {
+        this.revealLastLine();
+        this.updateTimestamps(changes);
+      }),
+    ]);
+    if (!preserveFocus) {
+      this.activate();
+    }
+    this.revealLastLine();
+  }
+
+  private revealLastLine(): void {
+    if (this.isLocked) {
+      return;
+    }
+    const editor = this.editor;
+    if (editor) {
+      const textModel = editor.getControl().getModel();
+      if (textModel) {
+        const lineNumber = textModel.getLineCount();
+        // const column = model.getLineMaxColumn(lineNumber);
+        editor
+          .getControl()
+          .revealPosition(
+            { lineNumber, column: 1 },
+            monaco.editor.ScrollType.Immediate
+          );
+      }
+    }
+  }
+
+  private get isLocked(): boolean {
+    return !this.monitorModel.autoscroll;
+  }
+
+  private async createEditorWidget(): Promise<EditorWidget> {
+    const editor = await this.editorProvider.get(
+      this.resourceProvider.resource.uri
+    );
+    return new EditorWidget(editor, this.selectionService);
+  }
+
+  private get editorWidget(): EditorWidget | undefined {
+    const itr = this.editorContainer.children();
+    let child = itr.next();
+    while (child) {
+      if (child instanceof EditorWidget) {
+        return child;
+      }
+      child = itr.next();
+    }
+    return undefined;
+  }
+
+  private get editor(): MonacoEditor | undefined {
+    const widget = this.editorWidget;
+    if (widget instanceof EditorWidget) {
+      if (widget.editor instanceof MonacoEditor) {
+        return widget.editor;
+      }
+    }
+    return undefined;
+  }
+
+  private async appendToTextModel(messages: string[]): Promise<void> {
+    const textModel = await this.textModel();
+    return messages
+      .map((message) =>
+        this.queue.add(async () => {
+          const end = textModel.getFullModelRange().getEndPosition();
+          const range = monaco.Range.fromPositions(end, end);
+          let text =
+            this.shouldHandleNextLeadingNL && this.startsWithNL(message)
+              ? message.substring(1)
+              : message;
+          if (this.monitorModel.timestamp) {
+            text = splitLines(text)
+              .map((line, index) => {
+                const now = new Date();
+                if (index === 0) {
+                  return format(end.column === 1 ? now : undefined) + line;
+                }
+                return format(now) + line;
+              })
+              .join('');
+          }
+          textModel.applyEdits([
+            {
+              range,
+              text,
+              forceMoveMarkers: true,
+            },
+          ]);
+          this.shouldHandleNextLeadingNL = this.endsWithCR(message);
+          this.maybeRemoveExceedingLines(textModel);
+        })
+      )
+      .reduce(async (prev, curr) => {
+        await prev;
+        return curr;
+      }, Promise.resolve());
+  }
+
+  private async textModel(): Promise<monaco.editor.ITextModel> {
+    return (await this.resourceProvider.resource.editorModelRef.promise).object
+      .textEditorModel;
+  }
+
+  private endsWithCR(message: string): boolean {
+    return message.charCodeAt(message.length - 1) === 13;
+  }
+
+  private startsWithNL(message: string): boolean {
+    return message.charCodeAt(0) === 10;
+  }
+
+  private updateTimestamps(changes: monaco.editor.IModelContentChange[]): void {
+    for (const {
+      text,
+      rangeLength,
+      range: { startLineNumber, endLineNumber },
+    } of changes) {
+      const lineNumbers = [startLineNumber, endLineNumber].map(
+        (lineNumber) => lineNumber + this.removedLinesCount
+      );
+      if (rangeLength > 0 && !text) {
+        // deletions
+        lineNumbers.forEach(
+          (lineNumber) => delete this.lineNumber2Timestamp[lineNumber]
+        );
+      } else if (rangeLength === 0 && text) {
+        // insertions
+        lineNumbers.forEach((lineNumber) => {
+          if (!this.lineNumber2Timestamp[lineNumber]) {
+            this.lineNumber2Timestamp[lineNumber] = format(new Date());
+          }
+        });
+      }
+    }
+  }
+
+  private async handleDidChangeConnected(): Promise<void> {
+    const { connectionStatus } = this.monitorModel;
+    if (connectionStatus === 'not-connected') {
+      this.clearConsole();
+    }
+    this.update();
+  }
+
+  private async handleDidChangeTimestamp(): Promise<void> {
+    const { timestamp } = this.monitorModel;
+    const textModel = await this.textModel();
+    const lineCount = textModel.getLineCount();
+    const operations: monaco.editor.IIdentifiedSingleEditOperation[] = [];
+    for (let i = 0; i < lineCount; i++) {
+      const lineStart = new monaco.Position(i + 1, 1);
+      if (timestamp) {
+        operations.push({
+          range: monaco.Range.fromPositions(lineStart, lineStart),
+          text: this.lineNumber2Timestamp[this.removedLinesCount + i + 1],
+          forceMoveMarkers: true,
+        });
+      } else {
+        const timestampEnd = new monaco.Position(
+          lineStart.lineNumber,
+          lineStart.column + timestampLength
+        );
+        operations.push({
+          range: monaco.Range.fromPositions(lineStart, timestampEnd),
+          text: null,
+          forceMoveMarkers: true,
+        });
+      }
+    }
+    textModel.applyEdits(operations);
+  }
+
+  private handleDidChangeMaxLineNumber(maxLineNumber: number): void {
+    this.maxLineNumber = maxLineNumber;
+    this.appendToTextModel(['']); // This is a NOOP change but will update the model and adjusts the line numbers if required
+  }
+
+  private handleDidChangeStopRenderingLineAfter(
+    stopRenderingLineAfter: number
+  ): void {
+    this.editor?.getControl().updateOptions({ stopRenderingLineAfter });
+  }
+
+  private maybeRemoveExceedingLines(textModel: monaco.editor.ITextModel): void {
+    if (this.maxLineNumber < 0) {
+      return;
+    }
+    const lineCount = textModel.getLineCount();
+    const linesToRemove = lineCount - this.maxLineNumber;
+    if (linesToRemove > 0) {
+      textModel.applyEdits([
+        {
+          range: new monaco.Range(1, 1, linesToRemove + 1, 1),
+          text: null,
+        },
+      ]);
+      this.removedLinesCount += linesToRemove;
+    }
+  }
+
   private readonly onSend = (value: string): void =>
     this.monitorManagerProxy.send(value);
 
@@ -358,157 +588,6 @@ export class MonitorWidget extends BaseWidget {
       this.monitorManagerProxy.changeSettings({ pluggableMonitorSettings });
     });
   };
-
-  private async refreshEditorWidget(
-    { preserveFocus }: { preserveFocus: boolean } = { preserveFocus: false }
-  ): Promise<void> {
-    const editorWidget = this.editorWidget;
-    if (editorWidget) {
-      if (!preserveFocus) {
-        this.activate();
-        return;
-      }
-    }
-    const widget = await this.createEditorWidget();
-    this.editorContainer.addWidget(widget);
-    this.toDispose.pushAll([
-      Disposable.create(() => widget.close()),
-      this.resourceProvider.resource.onDidChangeContents(() => {
-        this.ensureMaxLineNotExceeded();
-        this.revealLastLine();
-      }),
-    ]);
-    if (!preserveFocus) {
-      this.activate();
-    }
-    this.revealLastLine();
-  }
-
-  private revealLastLine(): void {
-    if (this.isLocked) {
-      return;
-    }
-    const editor = this.editor;
-    if (editor) {
-      const model = editor.getControl().getModel();
-      if (model) {
-        const lineNumber = model.getLineCount();
-        const column = model.getLineMaxColumn(lineNumber);
-        editor
-          .getControl()
-          .revealPosition(
-            { lineNumber, column },
-            monaco.editor.ScrollType.Smooth
-          );
-      }
-    }
-  }
-
-  private get isLocked(): boolean {
-    return !this.monitorModel.autoscroll;
-  }
-
-  private async createEditorWidget(): Promise<EditorWidget> {
-    const editor = await this.editorProvider.get(
-      this.resourceProvider.resource.uri
-    );
-    return new EditorWidget(editor, this.selectionService);
-  }
-
-  private get editorWidget(): EditorWidget | undefined {
-    for (const widget of toArray(this.editorContainer.children())) {
-      if (widget instanceof EditorWidget) {
-        return widget;
-      }
-    }
-    return undefined;
-  }
-
-  private get editor(): MonacoEditor | undefined {
-    const widget = this.editorWidget;
-    if (widget instanceof EditorWidget) {
-      if (widget.editor instanceof MonacoEditor) {
-        return widget.editor;
-      }
-    }
-    return undefined;
-  }
-
-  private async appendContent(messages: string[]): Promise<void> {
-    const textModel = await this.textModel();
-    return messages
-      .map((message) =>
-        this.appendContentQueue.add(async () => {
-          const end = textModel.getFullModelRange().getEndPosition();
-          const range = monaco.Range.fromPositions(end, end);
-          const text =
-            this.lastMessageDidEndWithCR && this.startsWithNL(message)
-              ? message.substring(1)
-              : message;
-          textModel.applyEdits([
-            {
-              range,
-              text,
-              forceMoveMarkers: true,
-            },
-          ]);
-          this.lastMessageDidEndWithCR = this.endWithCR(message);
-        })
-      )
-      .reduce(async (acc, curr) => {
-        await acc;
-        return curr;
-      }, Promise.resolve());
-  }
-
-  private lastMessageDidEndWithCR = false;
-  private async textModel() {
-    return (await this.resourceProvider.resource.editorModelRef.promise).object
-      .textEditorModel;
-  }
-
-  private endWithCR(message: string): boolean {
-    return message.charCodeAt(message.length - 1) === 13;
-  }
-
-  private startsWithNL(message: string): boolean {
-    return message.charCodeAt(0) === 10;
-  }
-
-  private handleDidChangeMaxLineNumber(maxLineNumber: number): void {
-    this.maxLineNumber = maxLineNumber;
-    this.appendContent(['']); // This is a NOOP change but will update the model and adjusts the line numbers if required
-  }
-
-  private handleDidChangeStopRenderingLineAfter(
-    stopRenderingLineAfter: number
-  ): void {
-    this.editor?.getControl().updateOptions({ stopRenderingLineAfter });
-  }
-
-  private readonly ensureMaxLineNotExceeded = debounce(
-    () => this.maybeTrimLines(),
-    16, // ~60Hz
-    { maxWait: 16 }
-  );
-
-  private maybeTrimLines(): void {
-    if (!this.editor || this.maxLineNumber < 0) {
-      return;
-    }
-    this.textModel().then((model) => {
-      const lineCount = model.getLineCount();
-      const linesToRemove = lineCount - this.maxLineNumber;
-      if (linesToRemove > 0) {
-        model.applyEdits([
-          {
-            range: new monaco.Range(1, 1, linesToRemove + 1, 1),
-            text: null,
-          },
-        ]);
-      }
-    });
-  }
 }
 
 const defaultLineEnding: SelectOption<MonitorEOL> = {
