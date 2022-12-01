@@ -38,8 +38,8 @@ export class MonitorManagerProxyClientImpl
   // this event is triggered.
   // Ideally a frontend component is connected to this event
   // to update the UI.
-  private readonly onMessagesReceivedEmitter = new Emitter<{
-    messages: string[];
+  protected readonly onMessagesReceivedEmitter = new Emitter<{
+    message: string;
   }>();
   readonly onMessagesReceived = this.onMessagesReceivedEmitter.event;
 
@@ -90,8 +90,8 @@ export class MonitorManagerProxyClientImpl
     this.webSocket.onerror = () => opened.reject();
     this.webSocket.onmessage = (message) => {
       const parsedMessage = JSON.parse(message.data);
-      if (Array.isArray(parsedMessage))
-        this.onMessagesReceivedEmitter.fire({ messages: parsedMessage });
+      if (typeof parsedMessage === 'string')
+        this.onMessagesReceivedEmitter.fire({ message: parsedMessage });
       else if (
         parsedMessage.command ===
         Monitor.MiddlewareCommand.ON_SETTINGS_DID_CHANGE

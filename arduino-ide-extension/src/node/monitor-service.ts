@@ -699,13 +699,14 @@ export class MonitorService extends CoreClientAware implements Disposable {
     if (!this.flushMessagesInterval) {
       const flushMessagesToFrontend = () => {
         if (this.messages.length) {
-          this.webSocketProvider.sendMessage(
-            JSON.stringify([Buffer.concat(this.messages).toString('utf8')])
+          const message = JSON.stringify(
+            Buffer.concat(this.messages).toString('utf8')
           );
+          this.webSocketProvider.sendMessage(message);
           this.messages = [];
         }
       };
-      this.flushMessagesInterval = setInterval(flushMessagesToFrontend, 32);
+      this.flushMessagesInterval = setInterval(flushMessagesToFrontend, 200);
     }
 
     if (!this.onMessageReceived) {

@@ -20,7 +20,6 @@ import { EditorWidget } from '@theia/editor/lib/browser';
 import * as monaco from '@theia/monaco-editor-core';
 import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
 import { MonacoEditorProvider } from '@theia/monaco/lib/browser/monaco-editor-provider';
-import PQueue from 'p-queue';
 import {
   MonitorEOL,
   MonitorManagerProxyClient,
@@ -74,6 +73,7 @@ export class MonitorWidget extends BaseWidget {
    * See: https://github.com/eclipse-theia/theia/issues/6704
    */
   private closing = false;
+  private textModel: monaco.editor.ITextModel | undefined;
   private maxLineNumber: number;
   private shouldHandleNextLeadingNL = false;
   private removedLinesCount = 0;
@@ -81,10 +81,6 @@ export class MonitorWidget extends BaseWidget {
   private readonly contentNode: HTMLDivElement;
   private readonly headerRoot: Root;
   private readonly editorContainer: DockPanel;
-  protected readonly queue = new PQueue({
-    autoStart: true,
-    concurrency: 1,
-  });
 
   constructor() {
     super();
@@ -117,10 +113,6 @@ export class MonitorWidget extends BaseWidget {
   protected init(): void {
     this.toDispose.pushAll([
       Disposable.create(() => this.monitorManagerProxy.disconnect()),
-      Disposable.create(() => {
-        this.queue.pause();
-        this.queue.clear();
-      }),
       Disposable.create(() => this.clearConsole()),
       this.preference.onPreferenceChanged(({ preferenceName, newValue }) => {
         if (typeof newValue === 'number') {
@@ -146,26 +138,26 @@ export class MonitorWidget extends BaseWidget {
             this.handleDidChangeTimestamp();
             break;
           }
-          default: {
-            this.update();
-          }
         }
       }),
       this.monitorManagerProxy.onMonitorSettingsDidChange((settings) =>
         this.updateSettings(settings)
       ),
-      this.monitorManagerProxy.onMessagesReceived(({ messages }) =>
-        this.appendToTextModel(messages)
+      this.monitorManagerProxy.onMessagesReceived(({ message }) =>
+        this.appendToTextModel(message)
       ),
     ]);
     this.maxLineNumber = this.preference['arduino.monitor.maxLineNumber'];
-    this.getCurrentSettings().then((settings) => this.updateSettings(settings));
-    this.monitorManagerProxy.startMonitor();
-    this.startMonitor();
-  }
-
-  reset(): void {
-    this.init();
+    this.getCurrentSettings().then((settings) => {
+      if (settings) {
+        this.updateSettings(settings);
+      }
+    });
+    this.appStateService
+      .reachedState('ready')
+      .then(() =>
+        setTimeout(() => this.monitorManagerProxy.startMonitor(), 5_000)
+      );
   }
 
   async clearConsole(): Promise<void> {
@@ -178,9 +170,7 @@ export class MonitorWidget extends BaseWidget {
 
   protected override onAfterAttach(message: Message): void {
     super.onAfterAttach(message);
-    this.headerRoot.render(
-      <React.Fragment>{this.renderHeader()}</React.Fragment>
-    );
+    this.renderHeader();
     Widget.attach(this.editorContainer, this.contentNode);
     this.toDisposeOnDetach.push(
       Disposable.create(() => Widget.detach(this.editorContainer))
@@ -227,65 +217,30 @@ export class MonitorWidget extends BaseWidget {
         ...settings.pluggableMonitorSettings,
       },
     };
-    this.update();
-  }
-
-  override dispose(): void {
-    this.toDisposeOnReset.dispose();
-    super.dispose();
-  }
-
-  protected override onAfterShow(msg: Message): void {
-    super.onAfterShow(msg);
-    this.update();
-  }
-
-  protected get lineEndings(): SelectOption<MonitorEOL>[] {
-    return [
-      {
-        label: nls.localize('arduino/serial/noLineEndings', 'No Line Ending'),
-        value: '',
-      },
-      {
-        label: nls.localize('arduino/serial/newLine', 'New Line'),
-        value: '\n',
-      },
-      {
-        label: nls.localize('arduino/serial/carriageReturn', 'Carriage Return'),
-        value: '\r',
-      },
-      {
-        label: nls.localize(
-          'arduino/serial/newLineCarriageReturn',
-          'Both NL & CR'
-        ),
-        value: '\r\n',
-      },
-    ];
-  }
-
-  private async startMonitor(): Promise<void> {
-    await this.appStateService.reachedState('ready');
-    await this.boardsServiceProvider.reconciled;
-    await this.syncSettings();
-    await this.monitorManagerProxy.startMonitor();
-  }
-
-  private async syncSettings(): Promise<void> {
-    const settings = await this.getCurrentSettings();
-    this.updateSettings(settings);
-  }
-
-  private async getCurrentSettings(): Promise<MonitorSettings> {
-    const board = this.boardsServiceProvider.boardsConfig.selectedBoard;
-    const port = this.boardsServiceProvider.boardsConfig.selectedPort;
-    if (!board || !port) {
-      return this.settings ?? {};
+    // Skip re-rendering the header when settings is an empty object
+    if (Object.keys(settings).length) {
+      this.renderHeader();
     }
-    return this.monitorManagerProxy.getCurrentSettings(board, port);
   }
 
-  private renderHeader(): React.ReactNode {
+  private async getCurrentSettings(): Promise<MonitorSettings | undefined> {
+    const {
+      boardsConfig: { selectedBoard, selectedPort },
+    } = this.boardsServiceProvider;
+    if (!selectedBoard || !selectedPort) {
+      return undefined;
+    }
+    return this.monitorManagerProxy.getCurrentSettings(
+      selectedBoard,
+      selectedPort
+    );
+  }
+
+  private renderHeader() {
+    this.headerRoot.render(<>{this.header()}</>);
+  }
+
+  private header(): React.ReactNode {
     const baudrate = this.settings?.pluggableMonitorSettings
       ? this.settings.pluggableMonitorSettings.baudrate
       : undefined;
@@ -361,13 +316,9 @@ export class MonitorWidget extends BaseWidget {
     }
     const widget = await this.createEditorWidget();
     this.editorContainer.addWidget(widget);
-    const textModel = await this.textModel();
     this.toDispose.pushAll([
       Disposable.create(() => widget.close()),
-      textModel.onDidChangeContent(({ changes }) => {
-        this.revealLastLine();
-        this.updateTimestamps(changes);
-      }),
+      Disposable.create(() => (this.textModel = undefined)),
     ]);
     if (!preserveFocus) {
       this.activate();
@@ -375,23 +326,28 @@ export class MonitorWidget extends BaseWidget {
     this.revealLastLine();
   }
 
-  private revealLastLine(): void {
+  private revealLastLine(
+    textModel: monaco.editor.ITextModel | undefined = this.textModel,
+    lineNumber?: number
+  ): void {
     if (this.isLocked) {
+      return;
+    }
+    if (!textModel) {
       return;
     }
     const editor = this.editor;
     if (editor) {
-      const textModel = editor.getControl().getModel();
-      if (textModel) {
-        const lineNumber = textModel.getLineCount();
-        // const column = model.getLineMaxColumn(lineNumber);
-        editor
-          .getControl()
-          .revealPosition(
-            { lineNumber, column: 1 },
-            monaco.editor.ScrollType.Immediate
-          );
-      }
+      editor.getControl().revealPosition(
+        {
+          lineNumber:
+            typeof lineNumber === 'number'
+              ? lineNumber
+              : textModel.getLineCount(),
+          column: 1,
+        },
+        monaco.editor.ScrollType.Immediate
+      );
     }
   }
 
@@ -403,6 +359,7 @@ export class MonitorWidget extends BaseWidget {
     const editor = await this.editorProvider.get(
       this.resourceProvider.resource.uri
     );
+    this.textModel = editor.getControl().getModel() ?? undefined;
     return new EditorWidget(editor, this.selectionService);
   }
 
@@ -428,48 +385,44 @@ export class MonitorWidget extends BaseWidget {
     return undefined;
   }
 
-  private async appendToTextModel(messages: string[]): Promise<void> {
-    const textModel = await this.textModel();
-    return messages
-      .map((message) =>
-        this.queue.add(async () => {
-          const end = textModel.getFullModelRange().getEndPosition();
-          const range = monaco.Range.fromPositions(end, end);
-          let text =
-            this.shouldHandleNextLeadingNL && this.startsWithNL(message)
-              ? message.substring(1)
-              : message;
-          if (this.monitorModel.timestamp) {
-            text = splitLines(text)
-              .map((line, index) => {
-                const now = new Date();
-                if (index === 0) {
-                  return format(end.column === 1 ? now : undefined) + line;
-                }
-                return format(now) + line;
-              })
-              .join('');
+  private async appendToTextModel(message: string): Promise<void> {
+    const textModel = this.textModel;
+    if (!textModel) {
+      console.warn(
+        `Received message chunks from the serial monitor, but the text model is not available. Skipping.`
+      );
+      return;
+    }
+    const end = textModel.getFullModelRange().getEndPosition();
+    const range = monaco.Range.fromPositions(end, end);
+    let text =
+      this.shouldHandleNextLeadingNL && this.startsWithNL(message)
+        ? message.substring(1)
+        : message;
+    if (this.monitorModel.timestamp) {
+      text = splitLines(text)
+        .map((line, index) => {
+          const now = new Date();
+          if (index === 0) {
+            return format(end.column === 1 ? now : undefined) + line;
           }
-          textModel.applyEdits([
-            {
-              range,
-              text,
-              forceMoveMarkers: true,
-            },
-          ]);
-          this.shouldHandleNextLeadingNL = this.endsWithCR(message);
-          this.maybeRemoveExceedingLines(textModel);
+          return format(now) + line;
         })
-      )
-      .reduce(async (prev, curr) => {
-        await prev;
-        return curr;
-      }, Promise.resolve());
-  }
-
-  private async textModel(): Promise<monaco.editor.ITextModel> {
-    return (await this.resourceProvider.resource.editorModelRef.promise).object
-      .textEditorModel;
+        .join('');
+    }
+    textModel.applyEdits([
+      {
+        range,
+        text,
+        forceMoveMarkers: true,
+      },
+    ]);
+    this.shouldHandleNextLeadingNL = this.endsWithCR(message);
+    this.revealLastLine(textModel, end.lineNumber);
+    this.maybeRemoveExceedingLines(textModel);
+    // requestIdleCallback(() => this.revealLastLine(), { timeout: 32 }); // ~30Hz
+    if (typeof this.updateTimestamps || typeof this.maybeRemoveExceedingLines) {
+    }
   }
 
   private endsWithCR(message: string): boolean {
@@ -514,9 +467,11 @@ export class MonitorWidget extends BaseWidget {
   }
 
   private async handleDidChangeTimestamp(): Promise<void> {
+    if (!this.textModel) {
+      return;
+    }
     const { timestamp } = this.monitorModel;
-    const textModel = await this.textModel();
-    const lineCount = textModel.getLineCount();
+    const lineCount = this.textModel.getLineCount();
     const operations: monaco.editor.IIdentifiedSingleEditOperation[] = [];
     for (let i = 0; i < lineCount; i++) {
       const lineStart = new monaco.Position(i + 1, 1);
@@ -538,12 +493,12 @@ export class MonitorWidget extends BaseWidget {
         });
       }
     }
-    textModel.applyEdits(operations);
+    this.textModel.applyEdits(operations);
   }
 
   private handleDidChangeMaxLineNumber(maxLineNumber: number): void {
     this.maxLineNumber = maxLineNumber;
-    this.appendToTextModel(['']); // This is a NOOP change but will update the model and adjusts the line numbers if required
+    this.appendToTextModel(''); // This is a NOOP change but will update the model and adjusts the line numbers if required
   }
 
   private handleDidChangeStopRenderingLineAfter(
@@ -579,13 +534,19 @@ export class MonitorWidget extends BaseWidget {
   };
 
   private readonly onChangeBaudRate = ({ value }: { value: string }): void => {
-    this.getCurrentSettings().then(({ pluggableMonitorSettings }) => {
-      if (!pluggableMonitorSettings || !pluggableMonitorSettings['baudrate']) {
-        return;
+    this.getCurrentSettings().then((settings) => {
+      if (settings) {
+        const { pluggableMonitorSettings } = settings;
+        if (
+          !pluggableMonitorSettings ||
+          !pluggableMonitorSettings['baudrate']
+        ) {
+          return;
+        }
+        const baudRateSettings = pluggableMonitorSettings['baudrate'];
+        baudRateSettings.selectedValue = value;
+        this.monitorManagerProxy.changeSettings({ pluggableMonitorSettings });
       }
-      const baudRateSettings = pluggableMonitorSettings['baudrate'];
-      baudRateSettings.selectedValue = value;
-      this.monitorManagerProxy.changeSettings({ pluggableMonitorSettings });
     });
   };
 }
