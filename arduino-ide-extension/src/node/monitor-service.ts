@@ -706,7 +706,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
           this.messages = [];
         }
       };
-      this.flushMessagesInterval = setInterval(flushMessagesToFrontend, 200);
+      this.flushMessagesInterval = setInterval(flushMessagesToFrontend, 32);
     }
 
     if (!this.onMessageReceived) {

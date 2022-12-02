@@ -385,7 +385,7 @@ export class MonitorWidget extends BaseWidget {
     return undefined;
   }
 
-  private async appendToTextModel(message: string): Promise<void> {
+  private appendToTextModel(message: string): void {
     const textModel = this.textModel;
     if (!textModel) {
       console.warn(
@@ -410,19 +410,30 @@ export class MonitorWidget extends BaseWidget {
         })
         .join('');
     }
-    textModel.applyEdits([
+    this.applyEditsUnsafe(textModel, [
       {
         range,
         text,
-        forceMoveMarkers: true,
+        // forceMoveMarkers: true,
       },
     ]);
     this.shouldHandleNextLeadingNL = this.endsWithCR(message);
     this.revealLastLine(textModel, end.lineNumber);
-    this.maybeRemoveExceedingLines(textModel);
+    // this.maybeRemoveExceedingLines(textModel);
     // requestIdleCallback(() => this.revealLastLine(), { timeout: 32 }); // ~30Hz
     if (typeof this.updateTimestamps || typeof this.maybeRemoveExceedingLines) {
     }
+  }
+
+  private applyEditsUnsafe(
+    textModel: monaco.editor.ITextModel,
+    rawOperations: monaco.editor.IIdentifiedSingleEditOperation[]
+  ): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsafeTextModel = textModel as any;
+    const operations =
+      unsafeTextModel['_validateEditOperations'](rawOperations);
+    return unsafeTextModel['_doApplyEdits'](operations, false);
   }
 
   private endsWithCR(message: string): boolean {
