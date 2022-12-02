@@ -48,7 +48,7 @@ export class AuthenticationServiceImpl
 
   async initAuthSession(): Promise<void> {
     if (!this.initialized) {
-      await this.delegate.init();
+      // await this.delegate.init();
       this.initialized = true;
     }
   }

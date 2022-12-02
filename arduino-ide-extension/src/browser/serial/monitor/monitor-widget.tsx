@@ -217,10 +217,7 @@ export class MonitorWidget extends BaseWidget {
         ...settings.pluggableMonitorSettings,
       },
     };
-    // Skip re-rendering the header when settings is an empty object
-    if (Object.keys(settings).length) {
-      this.renderHeader();
-    }
+    this.renderHeader();
   }
 
   private async getCurrentSettings(): Promise<MonitorSettings | undefined> {
@@ -419,8 +416,7 @@ export class MonitorWidget extends BaseWidget {
     ]);
     this.shouldHandleNextLeadingNL = this.endsWithCR(message);
     this.revealLastLine(textModel, end.lineNumber);
-    // this.maybeRemoveExceedingLines(textModel);
-    // requestIdleCallback(() => this.revealLastLine(), { timeout: 32 }); // ~30Hz
+    this.maybeRemoveExceedingLines(textModel);
     if (typeof this.updateTimestamps || typeof this.maybeRemoveExceedingLines) {
     }
   }
@@ -525,7 +521,7 @@ export class MonitorWidget extends BaseWidget {
     const lineCount = textModel.getLineCount();
     const linesToRemove = lineCount - this.maxLineNumber;
     if (linesToRemove > 0) {
-      textModel.applyEdits([
+      this.applyEditsUnsafe(textModel, [
         {
           range: new monaco.Range(1, 1, linesToRemove + 1, 1),
           text: null,
