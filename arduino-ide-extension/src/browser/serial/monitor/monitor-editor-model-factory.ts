@@ -52,4 +52,8 @@ class MonitorEditorModel extends OutputEditorModel {
   protected override async doSync(token: CancellationToken): Promise<void> {
     // NOOP
   }
+
+  protected override markAsDirty(): void {
+    // NOOP
+  }
 }
