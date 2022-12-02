@@ -357,6 +357,9 @@ export class MonitorWidget extends BaseWidget {
       this.resourceProvider.resource.uri
     );
     this.textModel = editor.getControl().getModel() ?? undefined;
+    if (this.textModel) {
+      this.textModel.updateOptions({ trimAutoWhitespace: false });
+    }
     return new EditorWidget(editor, this.selectionService);
   }
 
@@ -407,21 +410,31 @@ export class MonitorWidget extends BaseWidget {
         })
         .join('');
     }
-    this.applyEditsUnsafe(textModel, [
+    const operations: monaco.editor.IIdentifiedSingleEditOperation[] = [
       {
         range,
         text,
-        // forceMoveMarkers: true,
+        forceMoveMarkers: true,
       },
-    ]);
+    ];
+    if (this.maxLineNumber > 0) {
+      const estimatedLintCount =
+        textModel.getLineCount() + text.split(/\r\n|\r|\n/gm).length - 1;
+      const linesToRemove = estimatedLintCount - this.maxLineNumber;
+      if (linesToRemove > 0) {
+        operations.push({
+          range: new monaco.Range(1, 1, linesToRemove + 1, 1),
+          text: null,
+        });
+        this.removedLinesCount += linesToRemove;
+      }
+    }
+    textModel.applyEdits(operations);
     this.shouldHandleNextLeadingNL = this.endsWithCR(message);
     this.revealLastLine(textModel, end.lineNumber);
-    this.maybeRemoveExceedingLines(textModel);
-    if (typeof this.updateTimestamps || typeof this.maybeRemoveExceedingLines) {
-    }
   }
 
-  private applyEditsUnsafe(
+  /*TODO*/ protected applyEditsUnsafe(
     textModel: monaco.editor.ITextModel,
     rawOperations: monaco.editor.IIdentifiedSingleEditOperation[]
   ): void {
@@ -440,7 +453,9 @@ export class MonitorWidget extends BaseWidget {
     return message.charCodeAt(0) === 10;
   }
 
-  private updateTimestamps(changes: monaco.editor.IModelContentChange[]): void {
+  /*TODO*/ protected updateTimestamps(
+    changes: monaco.editor.IModelContentChange[]
+  ): void {
     for (const {
       text,
       rangeLength,
@@ -512,23 +527,6 @@ export class MonitorWidget extends BaseWidget {
     stopRenderingLineAfter: number
   ): void {
     this.editor?.getControl().updateOptions({ stopRenderingLineAfter });
-  }
-
-  private maybeRemoveExceedingLines(textModel: monaco.editor.ITextModel): void {
-    if (this.maxLineNumber < 0) {
-      return;
-    }
-    const lineCount = textModel.getLineCount();
-    const linesToRemove = lineCount - this.maxLineNumber;
-    if (linesToRemove > 0) {
-      this.applyEditsUnsafe(textModel, [
-        {
-          range: new monaco.Range(1, 1, linesToRemove + 1, 1),
-          text: null,
-        },
-      ]);
-      this.removedLinesCount += linesToRemove;
-    }
   }
 
   private readonly onSend = (value: string): void =>
