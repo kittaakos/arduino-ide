@@ -1,22 +1,25 @@
 import type { CancellationToken, Resource } from '@theia/core';
-import { SaveOptions } from '@theia/core/lib/browser';
+import type { SaveOptions } from '@theia/core/lib/browser';
 import { injectable } from '@theia/core/shared/inversify';
+import type { TextDocumentContentChangeEvent } from '@theia/core/shared/vscode-languageserver-protocol';
 import {
   MonacoEditorModel,
-  TextDocumentSaveReason,
+  TextDocumentSaveReason
 } from '@theia/monaco/lib/browser/monaco-editor-model';
 import {
   OutputEditorModel,
-  OutputEditorModelFactory,
+  OutputEditorModelFactory
 } from '@theia/output/lib/browser/output-editor-model-factory';
 import { MonitorUri } from './monitor-uri';
 
 @injectable()
 export class MonitorEditorModelFactory extends OutputEditorModelFactory {
   override readonly scheme: string = MonitorUri.scheme;
+
   override createModel(resource: Resource): MonacoEditorModel {
     const model = new MonitorEditorModel(resource, this.m2p, this.p2m);
     model.autoSave = 'off';
+    model['ignoreContentChanges'] = true;
     return model;
   }
 }
@@ -32,6 +35,10 @@ class MonitorEditorModel extends OutputEditorModel {
 
   // eslint-disable-next-line unused-imports/no-unused-vars, @typescript-eslint/no-unused-vars
   protected override setDirty(dirty: boolean): void {
+    // NOOP
+  }
+
+  protected override markAsDirty(): void {
     // NOOP
   }
 
@@ -53,7 +60,8 @@ class MonitorEditorModel extends OutputEditorModel {
     // NOOP
   }
 
-  protected override markAsDirty(): void {
+  // eslint-disable-next-line unused-imports/no-unused-vars, @typescript-eslint/no-unused-vars
+  protected override pushContentChanges(contentChanges: TextDocumentContentChangeEvent[]): void {
     // NOOP
   }
 }
