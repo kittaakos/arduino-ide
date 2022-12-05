@@ -418,23 +418,24 @@ export class MonitorWidget extends BaseWidget {
       },
     ];
     if (this.maxLineNumber > 0) {
-      const estimatedLintCount =
-        textModel.getLineCount() + text.split(/\r\n|\r|\n/gm).length - 1;
-      const linesToRemove = estimatedLintCount - this.maxLineNumber;
+      const estimatedLineCount =
+        end.lineNumber + text.split(/\r\n|\r|\n/gm).length - 1;
+      const linesToRemove = estimatedLineCount - this.maxLineNumber;
       if (linesToRemove > 0) {
         operations.push({
           range: new monaco.Range(1, 1, linesToRemove + 1, 1),
           text: null,
+          forceMoveMarkers: true,
         });
         this.removedLinesCount += linesToRemove;
       }
     }
-    textModel.applyEdits(operations);
+    this.applyEditsUnsafe(textModel, operations);
     this.shouldHandleNextLeadingNL = this.endsWithCR(message);
     this.revealLastLine(textModel, end.lineNumber);
   }
 
-  /*TODO*/ protected applyEditsUnsafe(
+  private applyEditsUnsafe(
     textModel: monaco.editor.ITextModel,
     rawOperations: monaco.editor.IIdentifiedSingleEditOperation[]
   ): void {

@@ -4,11 +4,11 @@ import { injectable } from '@theia/core/shared/inversify';
 import type { TextDocumentContentChangeEvent } from '@theia/core/shared/vscode-languageserver-protocol';
 import {
   MonacoEditorModel,
-  TextDocumentSaveReason
+  TextDocumentSaveReason,
 } from '@theia/monaco/lib/browser/monaco-editor-model';
 import {
   OutputEditorModel,
-  OutputEditorModelFactory
+  OutputEditorModelFactory,
 } from '@theia/output/lib/browser/output-editor-model-factory';
 import { MonitorUri } from './monitor-uri';
 
@@ -60,8 +60,10 @@ class MonitorEditorModel extends OutputEditorModel {
     // NOOP
   }
 
-  // eslint-disable-next-line unused-imports/no-unused-vars, @typescript-eslint/no-unused-vars
-  protected override pushContentChanges(contentChanges: TextDocumentContentChangeEvent[]): void {
+  protected override pushContentChanges(
+    // eslint-disable-next-line unused-imports/no-unused-vars, @typescript-eslint/no-unused-vars
+    contentChanges: TextDocumentContentChangeEvent[]
+  ): void {
     // NOOP
   }
 }
