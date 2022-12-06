@@ -7,7 +7,10 @@ import {
   postConstruct,
 } from '@theia/core/shared/inversify';
 import { URI as CodeURI } from '@theia/core/shared/vscode-uri';
-import type { EditorPreferences } from '@theia/editor/lib/browser/editor-preferences';
+import type {
+  EditorPreferenceChange,
+  EditorPreferences,
+} from '@theia/editor/lib/browser/editor-preferences';
 import { ITextResourcePropertiesService } from '@theia/monaco-editor-core/esm/vs/editor/common/services/textResourceConfiguration';
 import { StandaloneServices } from '@theia/monaco-editor-core/esm/vs/editor/standalone/browser/standaloneServices';
 import { MonacoEditorModel } from '@theia/monaco/lib/browser/monaco-editor-model';
@@ -60,6 +63,16 @@ export class MonacoTextModelService extends TheiaMonacoTextModelService {
           undefined,
           readOnly
         );
+  }
+
+  protected override updateModel(
+    model: MonacoEditorModel,
+    change?: EditorPreferenceChange | undefined
+  ): void {
+    if (model.uri.toString() === MonitorUri.toString()) {
+      return;
+    }
+    super.updateModel(model, change);
   }
 }
 
