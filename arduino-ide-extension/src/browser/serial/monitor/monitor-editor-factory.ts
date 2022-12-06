@@ -69,7 +69,7 @@ export class MonitorEditorFactory extends OutputEditorFactory {
       folding: false,
       matchBrackets: 'never',
       renderLineHighlightOnlyWhenFocus: true,
-      inlayHints: { enabled: 'off', displayStyle: 'compact' },
+      inlayHints: { enabled: 'off' },
     };
   }
 

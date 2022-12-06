@@ -12,7 +12,6 @@ import { MonacoBulkEditService } from '@theia/monaco/lib/browser/monaco-bulk-edi
 import { MonacoEditorModel } from '@theia/monaco/lib/browser/monaco-editor-model';
 import { MonacoEditorService } from '@theia/monaco/lib/browser/monaco-editor-service';
 import { MonacoLanguages } from '@theia/monaco/lib/browser/monaco-languages';
-import { ConnectionImpl } from '@theia/plugin-ext/lib/common/connection';
 import { PLUGIN_RPC_CONTEXT } from '@theia/plugin-ext/lib/common/plugin-api-rpc';
 import { HostedPluginServer } from '@theia/plugin-ext/lib/common/plugin-protocol';
 import { RPCProtocol } from '@theia/plugin-ext/lib/common/rpc-protocol';
@@ -27,7 +26,6 @@ import { setUpPluginApi } from '@theia/plugin-ext/lib/main/browser/main-context'
 import { EditorModelService } from '@theia/plugin-ext/lib/main/browser/text-editor-model-service';
 import { TextEditorsMainImpl } from '@theia/plugin-ext/lib/main/browser/text-editors-main';
 import { MonitorUri } from '../../serial/monitor/monitor-uri';
-import { DebugMainImpl } from './debug-main';
 
 const originalOnModelAdded = DocumentsMainImpl.prototype['onModelAdded'];
 const originalOnModelRemoved = DocumentsMainImpl.prototype['onModelRemoved'];
@@ -92,21 +90,11 @@ export class HostedPluginSupport extends TheiaHostedPluginSupport {
     const rpc =
       host === 'frontend' ? new PluginWorker().rpc : this.createServerRpc(host);
     setUpPluginApi(rpc, this.container);
-    this.patchDebugMain(rpc);
     this.patchDocumentsMain(rpc);
     this.mainPluginApiProviders
       .getContributions()
       .forEach((p) => p.initialize(rpc, this.container));
     return rpc;
-  }
-
-  private patchDebugMain(rpc: RPCProtocol): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const connectionMain = (rpc as any).locals.get(
-      PLUGIN_RPC_CONTEXT.CONNECTION_MAIN.id
-    ) as ConnectionImpl;
-    const debugMain = new DebugMainImpl(rpc, connectionMain, this.container);
-    rpc.set(PLUGIN_RPC_CONTEXT.DEBUG_MAIN, debugMain);
   }
 
   private patchDocumentsMain(rpc: RPCProtocol): void {

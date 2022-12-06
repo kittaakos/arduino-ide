@@ -50,9 +50,6 @@ export class MonitorWidget extends BaseWidget {
   private readonly boardsServiceProvider: BoardsServiceProvider;
   @inject(FrontendApplicationStateService)
   private readonly appStateService: FrontendApplicationStateService;
-
-  private readonly toDisposeOnReset: DisposableCollection;
-
   @inject(SelectionService)
   private readonly selectionService: SelectionService;
   @inject(MonacoEditorProvider)
@@ -81,6 +78,7 @@ export class MonitorWidget extends BaseWidget {
   private readonly contentNode: HTMLDivElement;
   private readonly headerRoot: Root;
   private readonly editorContainer: DockPanel;
+  private readonly toDisposeOnReset: DisposableCollection;
 
   constructor() {
     super();
@@ -89,10 +87,6 @@ export class MonitorWidget extends BaseWidget {
     this.title.iconClass = 'monitor-tab-icon';
     this.title.closable = true;
     this.scrollOptions = undefined;
-    this.toDisposeOnReset = new DisposableCollection();
-    this.toDispose.push(
-      Disposable.create(() => this.monitorManagerProxy.disconnect())
-    );
     this.contentNode = document.createElement('div');
     this.contentNode.classList.add('content');
     const headerNode = document.createElement('div');
@@ -107,11 +101,15 @@ export class MonitorWidget extends BaseWidget {
     this.editorContainer.addClass('editor-container');
     this.editorContainer.node.tabIndex = -1;
     this.lineNumber2Timestamp = {};
+    this.toDisposeOnReset = new DisposableCollection();
   }
 
   @postConstruct()
   protected init(): void {
-    this.toDispose.pushAll([
+    this.toDisposeOnReset.dispose();
+    this.toDisposeOnReset.pushAll([
+      Disposable.create(() => this.monitorManagerProxy.disconnect()),
+      Disposable.create(() => this.headerRoot.unmount()),
       Disposable.create(() => this.monitorManagerProxy.disconnect()),
       Disposable.create(() => this.clearConsole()),
       this.preference.onPreferenceChanged(({ preferenceName, newValue }) => {
@@ -158,6 +156,10 @@ export class MonitorWidget extends BaseWidget {
       .then(() =>
         setTimeout(() => this.monitorManagerProxy.startMonitor(), 5_000)
       );
+  }
+
+  reset(): void {
+    this.init();
   }
 
   async clearConsole(): Promise<void> {
@@ -314,7 +316,11 @@ export class MonitorWidget extends BaseWidget {
     const widget = await this.createEditorWidget();
     this.editorContainer.addWidget(widget);
     this.toDispose.pushAll([
-      Disposable.create(() => widget.close()),
+      Disposable.create(() => {
+        this.editorContainer.layout?.removeWidget(widget);
+        widget.close();
+        widget.dispose();
+      }),
       Disposable.create(() => (this.textModel = undefined)),
     ]);
     if (!preserveFocus) {
