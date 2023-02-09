@@ -20,7 +20,12 @@ import {
 import { URI } from '@theia/core/shared/vscode-uri';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import * as os from '@theia/core/lib/common/os';
-import { Restart } from '@theia/core/lib/electron-common/messaging/electron-messages';
+import {
+  RequestTitleBarStyle,
+  Restart,
+  TitleBarStyleAtStartup,
+  TitleBarStyleChanged,
+} from '@theia/core/lib/electron-common/messaging/electron-messages';
 import { TheiaBrowserWindowOptions } from '@theia/core/lib/electron-main/theia-electron-window';
 import { IsTempSketch } from '../../node/is-temp-sketch';
 import {
@@ -294,13 +299,6 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
     return super.avoidOverlap(options);
   }
 
-  protected override getTitleBarStyle(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _config: FrontendApplicationConfig
-  ): 'native' | 'custom' {
-    return 'native';
-  }
-
   protected override hookApplicationEvents(): void {
     app.on('will-quit', this.onWillQuit.bind(this));
     app.on('second-instance', this.onSecondInstance.bind(this));
@@ -308,6 +306,23 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
 
     ipcMain.on(Restart, ({ sender }) => {
       this.restart(sender.id);
+    });
+
+    ipcMain.on(TitleBarStyleChanged, ({ sender }, titleBarStyle: string) => {
+      this.useNativeWindowFrame = os.isOSX || titleBarStyle === 'native';
+      const browserWindow = BrowserWindow.fromId(sender.id);
+      if (browserWindow) {
+        this.saveWindowState(browserWindow);
+      } else {
+        console.warn(`no BrowserWindow with id: ${sender.id}`);
+      }
+    });
+
+    ipcMain.on(RequestTitleBarStyle, ({ sender }) => {
+      sender.send(
+        TitleBarStyleAtStartup,
+        this.didUseNativeWindowFrameOnStart.get(sender.id) ? 'native' : 'custom'
+      );
     });
   }
 

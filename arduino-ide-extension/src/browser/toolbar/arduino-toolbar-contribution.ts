@@ -57,8 +57,8 @@ export class ArduinoToolbarContribution
   }
 
   onStart(app: FrontendApplication) {
-    app.shell.addWidget(this.arduinoToolbarContainer, {
-      area: 'top',
-    });
+    // app.shell.addWidget(this.arduinoToolbarContainer, {
+    //   area: 'top',
+    // });
   }
 }

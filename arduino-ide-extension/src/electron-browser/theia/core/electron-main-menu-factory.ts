@@ -61,13 +61,7 @@ export class ElectronMainMenuFactory extends TheiaElectronMainMenuFactory {
       this.updateWhenReady = true;
       return;
     }
-    await this.preferencesService.ready;
-    const createdMenuBar = this.createElectronMenuBar();
-    if (isOSX) {
-      remote.Menu.setApplicationMenu(createdMenuBar);
-    } else {
-      remote.getCurrentWindow().setMenu(createdMenuBar);
-    }
+    return super.setMenuBar();
   }
 
   override createElectronContextMenu(
