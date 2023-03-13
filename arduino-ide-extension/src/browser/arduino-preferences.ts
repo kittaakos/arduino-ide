@@ -58,7 +58,9 @@ type StrictPreferenceSchemaProperties<T extends object> = {
   [p in keyof T]: PreferenceSchemaProperty;
 };
 type ArduinoPreferenceSchemaProperties =
-  StrictPreferenceSchemaProperties<ArduinoConfiguration> & { 'arduino.window.zoomLevel': PreferenceSchemaProperty };
+  StrictPreferenceSchemaProperties<ArduinoConfiguration> & {
+    'arduino.window.zoomLevel': PreferenceSchemaProperty;
+  };
 
 const properties: ArduinoPreferenceSchemaProperties = {
   'arduino.language.log': {
@@ -287,6 +289,22 @@ const properties: ArduinoPreferenceSchemaProperties = {
     ),
     default: defaultMonitorWidgetDockPanel,
   },
+  'arduino.monitor.stopRenderingLineAfter': {
+    type: 'number',
+    markdownDescription: nls.localize(
+      'arduino/preferences/monitor/stopRenderingLineAfter',
+      'Performance guard: Stop rendering a line after x characters in the _Serial Monitor_ view. Defaults to 1000. Use -1 to never stop rendering.'
+    ),
+    default: 1_000,
+  },
+  'arduino.monitor.maxLineNumber': {
+    type: 'number',
+    markdownDescription: nls.localize(
+      'arduino/preferences/monitor/maxLineNumber',
+      'Performance guard: Truncates previous lines after x lines in the _Serial Monitor_ view. Defaults to 1000. Use -1 to never truncate lines.'
+    ),
+    default: 1_000,
+  },
 };
 export const ArduinoConfigSchema: PreferenceSchema = {
   type: 'object',
@@ -321,6 +339,8 @@ export interface ArduinoConfiguration {
   'arduino.sketch.inoBlueprint': string;
   'arduino.checkForUpdates': boolean;
   'arduino.monitor.dockPanel': MonitorWidgetDockPanel;
+  'arduino.monitor.stopRenderingLineAfter': number;
+  'arduino.monitor.maxLineNumber': number;
 }
 
 export const ArduinoPreferences = Symbol('ArduinoPreferences');

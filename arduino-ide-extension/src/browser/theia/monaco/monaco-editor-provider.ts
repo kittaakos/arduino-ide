@@ -4,12 +4,14 @@ import {
   Disposable,
   DisposableCollection,
 } from '@theia/core/lib/common/disposable';
-import { EditorServiceOverrides, MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
+import {
+  EditorServiceOverrides,
+  MonacoEditor,
+} from '@theia/monaco/lib/browser/monaco-editor';
 import { MonacoEditorProvider as TheiaMonacoEditorProvider } from '@theia/monaco/lib/browser/monaco-editor-provider';
 import { SketchesServiceClientImpl } from '../../sketches-service-client-impl';
 import * as monaco from '@theia/monaco-editor-core';
 import type { ReferencesModel } from '@theia/monaco-editor-core/esm/vs/editor/contrib/gotoSymbol/browser/referencesModel';
-
 
 type CancelablePromise = Promise<ReferencesModel> & {
   cancel: () => void;
@@ -24,7 +26,7 @@ interface EditorFactory {
 @injectable()
 export class MonacoEditorProvider extends TheiaMonacoEditorProvider {
   @inject(SketchesServiceClientImpl)
-  protected readonly sketchesServiceClient: SketchesServiceClientImpl;
+  private readonly sketchesServiceClient: SketchesServiceClientImpl;
 
   protected override async doCreateEditor(
     uri: URI,
@@ -39,7 +41,10 @@ export class MonacoEditorProvider extends TheiaMonacoEditorProvider {
 
   private installCustomReferencesController(editor: MonacoEditor): Disposable {
     const control = editor.getControl();
-    const referencesController: any = control.getContribution('editor.contrib.referencesController');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const referencesController: any = control.getContribution(
+      'editor.contrib.referencesController'
+    );
     const originalToggleWidget = referencesController.toggleWidget;
     const toDispose = new DisposableCollection();
     const toDisposeBeforeToggleWidget = new DisposableCollection();
@@ -57,11 +62,13 @@ export class MonacoEditorProvider extends TheiaMonacoEditorProvider {
       if (referencesController._widget) {
         if ('onDidClose' in referencesController._widget) {
           toDisposeBeforeToggleWidget.push(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (referencesController._widget as any).onDidClose(() =>
               toDisposeBeforeToggleWidget.dispose()
             )
           );
         }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const preview = (referencesController._widget as any)
           ._preview as monaco.editor.ICodeEditor;
         if (preview) {

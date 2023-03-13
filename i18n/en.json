@@ -332,7 +332,6 @@
     },
     "monitor": {
       "alreadyConnectedError": "Could not connect to {0} {1} port. Already connected.",
-      "baudRate": "{0} baud",
       "connectionFailedError": "Could not connect to {0} {1} port.",
       "connectionFailedErrorWithDetails": "{0} Could not connect to {1} {2} port.",
       "connectionTimeout": "Timeout. The IDE has not received the 'success' message from the monitor after successfully connecting to it",
@@ -385,7 +384,9 @@
       "language.realTimeDiagnostics": "If true, the language server provides real-time diagnostics when typing in the editor. It's false by default.",
       "manualProxy": "Manual proxy configuration",
       "monitor": {
-        "dockPanel": "The area of the application shell where the _{0}_ widget will reside. It is either \"bottom\" or \"right\". It defaults to \"{1}\"."
+        "dockPanel": "The area of the application shell where the _{0}_ widget will reside. It is either \"bottom\" or \"right\". It defaults to \"{1}\".",
+        "maxLineNumber": "Performance guard: Truncates previous lines after x lines in the _Serial Monitor_ view. Defaults to 1000. Use -1 to never truncate lines.",
+        "stopRenderingLineAfter": "Performance guard: Stop rendering a line after x characters in the _Serial Monitor_ view. Defaults to 1000. Use -1 to never stop rendering."
       },
       "network": "Network",
       "newSketchbookLocation": "Select new sketchbook location",

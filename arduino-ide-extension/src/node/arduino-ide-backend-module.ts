@@ -23,7 +23,7 @@ import { CoreServiceImpl } from './core-service-impl';
 import { CoreService, CoreServicePath } from '../common/protocol/core-service';
 import { ConnectionContainerModule } from '@theia/core/lib/node/messaging/connection-container-module';
 import { CoreClientProvider } from './core-client-provider';
-import { ConnectionHandler, JsonRpcConnectionHandler } from '@theia/core';
+import { ConnectionHandler, RpcConnectionHandler } from '@theia/core';
 import { DefaultWorkspaceServer } from './theia/workspace/default-workspace-server';
 import { WorkspaceServer as TheiaWorkspaceServer } from '@theia/workspace/lib/common/workspace-protocol';
 import { SketchesServiceImpl } from './sketches-service-impl';
@@ -92,15 +92,12 @@ import {
   MonitorManagerProxyClient,
   MonitorManagerProxyPath,
 } from '../common/protocol/monitor-service';
-import { MonitorService, MonitorServiceName } from './monitor-service';
 import { MonitorSettingsProvider } from './monitor-settings/monitor-settings-provider';
 import { MonitorSettingsProviderImpl } from './monitor-settings/monitor-settings-provider-impl';
 import {
   MonitorServiceFactory,
   MonitorServiceFactoryOptions,
 } from './monitor-service-factory';
-import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
-import { WebSocketProvider } from './web-socket/web-socket-provider';
 import { ClangFormatter } from './clang-formatter';
 import { FormatterPath } from '../common/protocol/formatter';
 import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';
@@ -135,7 +132,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       (context) =>
-        new JsonRpcConnectionHandler(ConfigServicePath, () =>
+        new RpcConnectionHandler(ConfigServicePath, () =>
           context.container.get(ConfigService)
         )
     )
@@ -148,7 +145,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       (context) =>
-        new JsonRpcConnectionHandler(ArduinoDaemonPath, () =>
+        new RpcConnectionHandler(ArduinoDaemonPath, () =>
           context.container.get(ArduinoDaemon)
         )
     )
@@ -159,7 +156,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       ({ container }) =>
-        new JsonRpcConnectionHandler(FormatterPath, () =>
+        new RpcConnectionHandler(FormatterPath, () =>
           container.get(ClangFormatter)
         )
     )
@@ -182,7 +179,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       (context) =>
-        new JsonRpcConnectionHandler(ExecutableServicePath, () =>
+        new RpcConnectionHandler(ExecutableServicePath, () =>
           context.container.get(ExecutableService)
         )
     )
@@ -203,7 +200,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       (context) =>
-        new JsonRpcConnectionHandler(SketchesServicePath, () =>
+        new RpcConnectionHandler(SketchesServicePath, () =>
           context.container.get(SketchesService)
         )
     )
@@ -252,9 +249,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(MonitorSettingsProviderImpl).toSelf().inSingletonScope();
   bind(MonitorSettingsProvider).toService(MonitorSettingsProviderImpl);
 
-  bind(WebSocketProviderImpl).toSelf();
-  bind(WebSocketProvider).toService(WebSocketProviderImpl);
-
   bind(MonitorServiceFactory).toFactory(
     ({ container }) =>
       (options: MonitorServiceFactoryOptions) => {
@@ -296,7 +290,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       (context) =>
-        new JsonRpcConnectionHandler(FileSystemExtPath, () =>
+        new RpcConnectionHandler(FileSystemExtPath, () =>
           context.container.get(FileSystemExt)
         )
     )
@@ -316,7 +310,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       (context) =>
-        new JsonRpcConnectionHandler<NotificationServiceClient>(
+        new RpcConnectionHandler<NotificationServiceClient>(
           NotificationServicePath,
           (client) => {
             const server = context.container.get<NotificationServiceServer>(
@@ -346,7 +340,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     'config', // Logger for the CLI config reading and manipulation
     'sketches-service', // For creating, loading, and cloning sketches
     MonitorManagerName, // Logger for the monitor manager and its services
-    MonitorServiceName,
   ].forEach((name) => bindChildLogger(bind, name));
 
   // Cloud sketchbook bindings
@@ -356,7 +349,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       (context) =>
-        new JsonRpcConnectionHandler<AuthenticationServiceClient>(
+        new RpcConnectionHandler<AuthenticationServiceClient>(
           AuthenticationServicePath,
           (client) => {
             const server = context.container.get<AuthenticationServiceImpl>(
@@ -386,7 +379,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConnectionHandler)
     .toDynamicValue(
       ({ container }) =>
-        new JsonRpcConnectionHandler(SurveyNotificationServicePath, () =>
+        new RpcConnectionHandler(SurveyNotificationServicePath, () =>
           container.get<SurveyNotificationService>(SurveyNotificationService)
         )
     )

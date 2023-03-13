@@ -1,32 +1,34 @@
-import React from '@theia/core/shared/react';
-import {
-  injectable,
-  inject,
-  postConstruct,
-} from '@theia/core/shared/inversify';
-import {
-  AbstractViewContribution,
-  ApplicationShell,
-  codicon,
-} from '@theia/core/lib/browser';
-import { MonitorWidget } from './monitor-widget';
-import { MenuModelRegistry, Command, CommandRegistry } from '@theia/core';
+import { ClipboardService } from '@theia/core/lib/browser/clipboard-service';
+import { CommonCommands } from '@theia/core/lib/browser/common-frontend-contribution';
+import { ApplicationShell } from '@theia/core/lib/browser/shell/application-shell';
 import {
   TabBarToolbarContribution,
   TabBarToolbarRegistry,
 } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
-import { ArduinoToolbar } from '../../toolbar/arduino-toolbar';
-import { ArduinoMenus } from '../../menu/arduino-menus';
-import { nls } from '@theia/core/lib/common';
+import { AbstractViewContribution } from '@theia/core/lib/browser/shell/view-contribution';
+import { codicon, Widget } from '@theia/core/lib/browser/widgets/widget';
+import { Command, CommandRegistry } from '@theia/core/lib/common/command';
 import { Event } from '@theia/core/lib/common/event';
-import { MonitorModel } from '../../monitor-model';
+import { MenuModelRegistry } from '@theia/core/lib/common/menu/menu-model-registry';
+import { nls } from '@theia/core/lib/common/nls';
+import {
+  inject,
+  injectable,
+  postConstruct,
+} from '@theia/core/shared/inversify';
+import React from '@theia/core/shared/react';
+import { serialMonitorWidgetLabel } from '../../../common/nls';
 import { MonitorManagerProxyClient } from '../../../common/protocol';
 import {
   ArduinoPreferences,
   defaultMonitorWidgetDockPanel,
   isMonitorWidgetDockPanel,
 } from '../../arduino-preferences';
-import { serialMonitorWidgetLabel } from '../../../common/nls';
+import { ArduinoMenus } from '../../menu/arduino-menus';
+import { MonitorModel } from '../../monitor-model';
+import { ArduinoToolbar } from '../../toolbar/arduino-toolbar';
+import { MonitorContextMenu } from './monitor-context-menu-service';
+import { MonitorWidget } from './monitor-widget';
 
 export namespace SerialMonitor {
   export namespace Commands {
@@ -51,7 +53,10 @@ export namespace SerialMonitor {
         iconClass: codicon('clear-all'),
       },
       'vscode/output.contribution/clearOutput.label'
-    );
+    ) as Command & { label: string };
+    export const COPY_ALL: Command = {
+      id: 'serial-monitor-copy-all',
+    };
   }
 }
 
@@ -71,6 +76,8 @@ export class MonitorViewContribution
   private readonly monitorManagerProxy: MonitorManagerProxyClient;
   @inject(ArduinoPreferences)
   private readonly arduinoPreferences: ArduinoPreferences;
+  @inject(ClipboardService)
+  private readonly clipboardService: ClipboardService;
 
   private _panel: ApplicationShell.Area;
 
@@ -126,6 +133,17 @@ export class MonitorViewContribution
         order: '5',
       });
     }
+    menus.registerMenuAction(MonitorContextMenu.TEXT_EDIT_GROUP, {
+      commandId: CommonCommands.COPY.id,
+    });
+    menus.registerMenuAction(MonitorContextMenu.TEXT_EDIT_GROUP, {
+      commandId: SerialMonitor.Commands.COPY_ALL.id,
+      label: nls.localizeByDefault('Copy All'),
+    });
+    menus.registerMenuAction(MonitorContextMenu.WIDGET_GROUP, {
+      commandId: SerialMonitor.Commands.CLEAR_OUTPUT.id,
+      label: nls.localizeByDefault('Clear Output'),
+    });
   }
 
   registerToolbarItems(registry: TabBarToolbarRegistry): void {
@@ -153,12 +171,25 @@ export class MonitorViewContribution
 
   override registerCommands(commands: CommandRegistry): void {
     commands.registerCommand(SerialMonitor.Commands.CLEAR_OUTPUT, {
-      isEnabled: (widget) => widget instanceof MonitorWidget,
-      isVisible: (widget) => widget instanceof MonitorWidget,
-      execute: (widget) => {
-        if (widget instanceof MonitorWidget) {
-          widget.clearConsole();
+      isEnabled: (arg) => {
+        if (arg instanceof Widget) {
+          return arg instanceof MonitorWidget;
         }
+        return this.shell.currentWidget instanceof MonitorWidget;
+      },
+      isVisible: (arg) => {
+        if (arg instanceof Widget) {
+          return arg instanceof MonitorWidget;
+        }
+        return this.shell.currentWidget instanceof MonitorWidget;
+      },
+      execute: () => {
+        this.widget.then((widget) => {
+          this.withWidget(widget, (output) => {
+            output.clearConsole();
+            return true;
+          });
+        });
       },
     });
     if (this.toggleCommand) {
@@ -178,12 +209,20 @@ export class MonitorViewContribution
       { id: MonitorViewContribution.RESET_SERIAL_MONITOR },
       { execute: () => this.reset() }
     );
+    commands.registerCommand(SerialMonitor.Commands.COPY_ALL, {
+      execute: () => {
+        const text = this.tryGetWidget()?.text;
+        if (text) {
+          this.clipboardService.writeText(text);
+        }
+      },
+    });
   }
 
   protected async toggle(): Promise<void> {
     const widget = this.tryGetWidget();
     if (widget) {
-      widget.dispose();
+      widget.close();
     } else {
       await this.openView({ activate: true, reveal: true });
     }
@@ -238,5 +277,12 @@ export class MonitorViewContribution
   protected readonly toggleTimestamp = () => this.doToggleTimestamp();
   protected async doToggleTimestamp(): Promise<void> {
     this.model.toggleTimestamp();
+  }
+
+  private withWidget(
+    widget: Widget | undefined = this.tryGetWidget(),
+    predicate: (monitorWidget: MonitorWidget) => boolean = () => true
+  ): boolean | false {
+    return widget instanceof MonitorWidget ? predicate(widget) : false;
   }
 }

@@ -1,4 +1,4 @@
-import type { JsonRpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
+import type { RpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
 import type {
   BoardsPackage,
   ConfigState,
@@ -51,7 +51,7 @@ export interface NotificationServiceClient {
   notifyIndexUpdateDidFail(params: IndexUpdateDidFailParams): void;
 
   // Daemon
-  notifyDaemonDidStart(port: string): void;
+  notifyDaemonDidStart(port: number): void;
   notifyDaemonDidStop(): void;
 
   // CLI config
@@ -78,6 +78,6 @@ export const NotificationServicePath = '/services/notification-service';
 export const NotificationServiceServer = Symbol('NotificationServiceServer');
 export interface NotificationServiceServer
   extends Required<NotificationServiceClient>,
-    JsonRpcServer<NotificationServiceClient> {
+    RpcServer<NotificationServiceClient> {
   disposeClient(client: NotificationServiceClient): void;
 }

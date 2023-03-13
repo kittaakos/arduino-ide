@@ -9,15 +9,6 @@
     flex-direction: column;
 }
 
-.serial-monitor-messages {
-    white-space: 'pre';
-    font-family: monospace
-}
-
-.serial-monitor-messages pre {
-    margin: 0px;
-}
-
 .serial-monitor .head {
     display: flex;
     padding: 0px 5px 5px 5px;
@@ -92,4 +83,15 @@
 
 .p-TabBar-toolbar .item .clear-all {
     background: var(--theia-icon-clear) no-repeat;
+}
+
+#serial-monitor .content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#serial-monitor .editor-container {
+    height: 100%;
+    margin: 0px 5px;
 }

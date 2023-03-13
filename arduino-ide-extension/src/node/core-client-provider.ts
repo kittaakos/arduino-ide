@@ -128,10 +128,9 @@ export class CoreClientProvider {
   /**
    * Encapsulates both the gRPC core client creation (`CreateRequest`) and initialization (`InitRequest`).
    */
-  private async create(port: string): Promise<CoreClientProvider.Client> {
+  private async create(port: number): Promise<CoreClientProvider.Client> {
     this.closeClient();
-    const address = this.address(port);
-    const client = await this.createClient(address);
+    const client = await createCoreClient(port);
     this.toDisposeOnCloseClient.pushAll([
       Disposable.create(() => client.client.close()),
     ]);
@@ -195,74 +194,12 @@ export class CoreClientProvider {
     return this.toDisposeOnCloseClient.dispose();
   }
 
-  private async createClient(
-    address: string
-  ): Promise<CoreClientProvider.Client> {
-    // https://github.com/agreatfool/grpc_tools_node_protoc_ts/blob/master/doc/grpcjs_support.md#usage
-    const ArduinoCoreServiceClient = grpc.makeClientConstructor(
-      // @ts-expect-error: ignore
-      commandsGrpcPb['cc.arduino.cli.commands.v1.ArduinoCoreService'],
-      'ArduinoCoreServiceService'
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ) as any;
-    const client = new ArduinoCoreServiceClient(
-      address,
-      grpc.credentials.createInsecure(),
-      this.channelOptions
-    ) as ArduinoCoreServiceClient;
-
-    const instance = await new Promise<Instance>((resolve, reject) => {
-      client.create(new CreateRequest(), (err, resp) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        const instance = resp.getInstance();
-        if (!instance) {
-          reject(
-            new Error(
-              '`CreateResponse` was OK, but the retrieved `instance` was `undefined`.'
-            )
-          );
-          return;
-        }
-        resolve(instance);
-      });
-    });
-
-    return { instance, client };
-  }
-
-  private async initInstance({
-    client,
-    instance,
-  }: CoreClientProvider.Client): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const errors: RpcStatus[] = [];
-      client
-        .init(new InitRequest().setInstance(instance))
-        .on('data', (resp: InitResponse) => {
-          // XXX: The CLI never sends `initProgress`, it's always `error` or nothing. Is this a CLI bug?
-          // According to the gRPC API, the CLI should send either a `TaskProgress` or a `DownloadProgress`, but it does not.
-          const error = resp.getError();
-          if (error) {
-            const { code, message } = Status.toObject(false, error);
-            console.error(
-              `Detected an error response during the gRPC core client initialization: code: ${code}, message: ${message}`
-            );
-            errors.push(error);
-          }
-        })
-        .on('error', reject)
-        .on('end', async () => {
-          const error = await this.evaluateErrorStatus(errors);
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        });
-    });
+  private async initInstance(
+    coreClient: CoreClientProvider.Client
+  ): Promise<void> {
+    return initInstance(coreClient, (status) =>
+      this.evaluateErrorStatus(status)
+    );
   }
 
   private async evaluateErrorStatus(
@@ -406,33 +343,6 @@ export class CoreClientProvider {
         this.notificationService.notifyIndexUpdateDidComplete(params),
     });
   }
-
-  private address(port: string): string {
-    return `localhost:${port}`;
-  }
-
-  private get channelOptions(): Record<string, unknown> {
-    return {
-      'grpc.max_send_message_length': 512 * 1024 * 1024,
-      'grpc.max_receive_message_length': 512 * 1024 * 1024,
-      'grpc.primary_user_agent': `arduino-ide/${this.version}`,
-    };
-  }
-
-  private _version: string | undefined;
-  private get version(): string {
-    if (this._version) {
-      return this._version;
-    }
-    const json = require('../../package.json');
-    if ('version' in json) {
-      this._version = json.version;
-    }
-    if (!this._version) {
-      this._version = '0.0.0';
-    }
-    return this._version;
-  }
 }
 export namespace CoreClientProvider {
   export interface Client {
@@ -560,4 +470,112 @@ function evaluate(
 ): boolean {
   const status = RpcStatus.toObject(false, subject);
   return predicate(status);
+}
+
+let _version: string | undefined = undefined;
+function version(): string {
+  if (_version) {
+    return _version;
+  }
+  const json = require('../../package.json');
+  if ('version' in json) {
+    _version = json.version;
+  }
+  if (!_version) {
+    _version = '0.0.0';
+  }
+  return _version;
+}
+
+function localhost(port: number): string {
+  return `localhost:${port}`;
+}
+
+const defaultChannelOptions = {
+  'grpc.max_send_message_length': 512 * 1024 * 1024,
+  'grpc.max_receive_message_length': 512 * 1024 * 1024,
+  'grpc.primary_user_agent': `arduino-ide/${version()}`,
+};
+export async function createCoreClient(
+  /**
+   * If `number`, it's the port, and the host will be `localhost`. Otherwise the address string.
+   */
+  addressOrPort: string | number,
+  channelOptions: Record<string, unknown> = defaultChannelOptions
+): Promise<CoreClientProvider.Client> {
+  // https://github.com/agreatfool/grpc_tools_node_protoc_ts/blob/master/doc/grpcjs_support.md#usage
+  const ArduinoCoreServiceClient = grpc.makeClientConstructor(
+    // @ts-expect-error: ignore
+    commandsGrpcPb['cc.arduino.cli.commands.v1.ArduinoCoreService'],
+    'ArduinoCoreServiceService'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) as any;
+  const client = new ArduinoCoreServiceClient(
+    typeof addressOrPort === 'number'
+      ? localhost(addressOrPort)
+      : addressOrPort,
+    grpc.credentials.createInsecure(),
+    channelOptions
+  ) as ArduinoCoreServiceClient;
+
+  const instance = await new Promise<Instance>((resolve, reject) => {
+    client.create(new CreateRequest(), (err, resp) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      const instance = resp.getInstance();
+      if (!instance) {
+        reject(
+          new Error(
+            '`CreateResponse` was OK, but the retrieved `instance` was `undefined`.'
+          )
+        );
+        return;
+      }
+      resolve(instance);
+    });
+  });
+
+  return { instance, client };
+}
+
+export type EvaluateErrorStatus = (
+  status: RpcStatus[]
+) => Promise<Error | undefined>;
+export const strictStatusEvaluator = async (status: RpcStatus[]) => {
+  const first = status.slice().shift();
+  return first ? new Error(first.toObject(false).message) : undefined;
+};
+
+export async function initInstance(
+  { client, instance }: CoreClientProvider.Client,
+  evaluateErrorStatus: EvaluateErrorStatus = strictStatusEvaluator
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const errors: RpcStatus[] = [];
+    client
+      .init(new InitRequest().setInstance(instance))
+      .on('data', (resp: InitResponse) => {
+        // XXX: The CLI never sends `initProgress`, it's always `error` or nothing. Is this a CLI bug?
+        // According to the gRPC API, the CLI should send either a `TaskProgress` or a `DownloadProgress`, but it does not.
+        const error = resp.getError();
+        if (error) {
+          const { code, message } = Status.toObject(false, error);
+          console.error(
+            `Detected an error response during the gRPC core client initialization: code: ${code}, message: ${message}`
+          );
+          errors.push(error);
+        }
+      })
+      .on('error', reject)
+      .on('end', async () => {
+        const error = await evaluateErrorStatus(errors);
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+  });
 }

@@ -2,11 +2,10 @@ import { ClientDuplexStream, status } from '@grpc/grpc-js';
 import {
   ApplicationError,
   Disposable,
+  DisposableCollection,
   Emitter,
-  ILogger,
   nls,
 } from '@theia/core';
-import { inject, named, postConstruct } from '@theia/core/shared/inversify';
 import {
   Board,
   Port,
@@ -18,7 +17,7 @@ import {
   isMonitorConnected,
   MonitorSettings,
   PluggableMonitorSettings,
-} from '../common/protocol';
+} from '../../common/protocol/index';
 import {
   EnumerateMonitorPortSettingsRequest,
   EnumerateMonitorPortSettingsResponse,
@@ -26,20 +25,26 @@ import {
   MonitorPortSetting,
   MonitorRequest,
   MonitorResponse,
-} from './cli-protocol/cc/arduino/cli/commands/v1/monitor_pb';
-import { CoreClientAware } from './core-client-provider';
-import { WebSocketProvider } from './web-socket/web-socket-provider';
-import { Port as RpcPort } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
-import { MonitorSettingsProvider } from './monitor-settings/monitor-settings-provider';
+} from '../cli-protocol/cc/arduino/cli/commands/v1/monitor_pb';
+import { Port as RpcPort } from '../cli-protocol/cc/arduino/cli/commands/v1/port_pb';
 import {
   Deferred,
   retry,
   timeoutReject,
 } from '@theia/core/lib/common/promise-util';
-import { MonitorServiceFactoryOptions } from './monitor-service-factory';
-import { ServiceError } from './service-error';
+import { ServiceError } from '../service-error';
+import {
+  MonitorServiceClient,
+  AcquireMonitorParams,
+  MonitorServiceServer,
+} from './monitor-service-protocol';
+import WebSocketProviderImpl from './web-socket-provider';
+import {
+  CoreClientProvider,
+  createCoreClient,
+  initInstance,
+} from '../core-client-provider';
 
-export const MonitorServiceName = 'monitor-service';
 type DuplexHandlerKeys =
   | 'close'
   | 'end'
@@ -55,16 +60,8 @@ interface DuplexHandler {
 const MAX_WRITE_TO_STREAM_TRIES = 10;
 const WRITE_TO_STREAM_TIMEOUT_MS = 30000;
 
-export class MonitorService extends CoreClientAware implements Disposable {
-  @inject(ILogger)
-  @named(MonitorServiceName)
-  private readonly logger: ILogger;
-
-  @inject(MonitorSettingsProvider)
-  private readonly monitorSettingsProvider: MonitorSettingsProvider;
-
-  @inject(WebSocketProvider)
-  private readonly webSocketProvider: WebSocketProvider;
+export class MonitorService implements Disposable, MonitorServiceServer {
+  private readonly webSocketProvider: WebSocketProviderImpl;
 
   // Bidirectional gRPC stream used to receive and send data from the running
   // pluggable monitor managed by the Arduino CLI.
@@ -76,7 +73,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
 
   // List of messages received from the running pluggable monitor.
   // These are flushed from time to time to the frontend.
-  private messages: string[] = [];
+  private messages: Uint8Array[] = [];
 
   // Handles messages received from the frontend via websocket.
   private onMessageReceived?: Disposable;
@@ -92,12 +89,15 @@ export class MonitorService extends CoreClientAware implements Disposable {
   private readonly onDisposeEmitter = new Emitter<void>();
   readonly onDispose = this.onDisposeEmitter.event;
 
+  private readonly toDisposeOnClose = new DisposableCollection();
+
   private _initialized = new Deferred<void>();
   private creating: Deferred<void>;
   private readonly board: Board;
   private readonly port: Port;
   private readonly monitorID: string;
-  private readonly streamingTextDecoder = new TextDecoder('utf8');
+  private monitorClient: MonitorServiceClient | undefined; // the client is the Theia backend process, the parent of this process
+  private readonly coreClient: Deferred<CoreClientProvider.Client>; // a dedicated core client for the monitor service process
 
   /**
    * The lightweight representation of the port configuration currently in use for the running monitor.
@@ -108,50 +108,84 @@ export class MonitorService extends CoreClientAware implements Disposable {
     | MonitorPortConfiguration.AsObject
     | undefined;
 
-  constructor(
-    @inject(MonitorServiceFactoryOptions) options: MonitorServiceFactoryOptions
-  ) {
-    super();
-    this.board = options.board;
-    this.port = options.port;
-    this.monitorID = options.monitorID;
-  }
-
-  @postConstruct()
-  protected init(): void {
-    this.onWSClientsNumberChanged =
-      this.webSocketProvider.onClientsNumberChanged(async (clients: number) => {
-        if (clients === 0) {
-          // There are no more clients that want to receive
-          // data from this monitor, we can freely close
-          // and dispose it.
-          this.dispose();
-          return;
-        }
-        this.updateClientsSettings(this.settings);
-      });
-
-    this.portMonitorSettings(this.port.protocol, this.board.fqbn!, true).then(
-      async (settings) => {
-        this.settings = {
-          ...this.settings,
-          pluggableMonitorSettings:
-            await this.monitorSettingsProvider.getSettings(
-              this.monitorID,
-              settings
-            ),
-        };
-        this._initialized.resolve();
-      }
+  constructor(private readonly options: AcquireMonitorParams) {
+    this.webSocketProvider = new WebSocketProviderImpl();
+    this.toDisposeOnClose.pushAll([
+      this.webSocketProvider,
+      this.webSocketProvider.onLastClientDidDisconnect(() => {
+        /**/
+      }),
+      this.webSocketProvider.onDidReceiveMessage((message) =>
+        this.getClient()?.onData({ type: 'message', data: message })
+      ),
+    ]);
+    this.coreClient = new Deferred();
+    this.initClient().then(
+      (client) => this.coreClient.resolve(client),
+      (reason) => this.coreClient.reject(reason)
     );
   }
 
-  get initialized(): Promise<void> {
-    return this._initialized.promise;
+  private async initClient(): Promise<CoreClientProvider.Client> {
+    const coreClient = await createCoreClient(this.options.daemonPort);
+    this.toDisposeOnClose.push(
+      Disposable.create(() => coreClient.client.close())
+    );
+    await initInstance(coreClient);
+    return coreClient;
   }
 
-  getWebsocketAddressPort(): number {
-    return this.webSocketProvider.getAddress().port;
+  setClient(client: MonitorServiceClient | undefined): void {
+    if (this.monitorClient && client) {
+      throw new Error(`Client already set.`);
+    }
+    if (!this.monitorClient && !client) {
+      throw new Error(`Client is still unset`);
+    }
+    this.monitorClient = client;
+    if (this.monitorClient) {
+      this.monitorClient.onData({
+        type: 'address',
+        data: this.webSocketProvider.getAddress(),
+      });
+    }
+  }
+
+  getClient(): MonitorServiceClient | undefined {
+    return this.monitorClient;
+  }
+
+  // @postConstruct()
+  // protected init(): void {
+  //   this.onWSClientsNumberChanged =
+  //     this.webSocketProvider.onClientsNumberChanged(async (clients: number) => {
+  //       if (clients === 0) {
+  //         // There are no more clients that want to receive
+  //         // data from this monitor, we can freely close
+  //         // and dispose it.
+  //         this.dispose();
+  //         return;
+  //       }
+  //       this.updateClientsSettings(this.settings);
+  //     });
+
+  //   this.portMonitorSettings(this.port.protocol, this.board.fqbn!, true).then(
+  //     async (settings) => {
+  //       this.settings = {
+  //         ...this.settings,
+  //         pluggableMonitorSettings:
+  //           await this.monitorSettingsProvider.getSettings(
+  //             this.monitorID,
+  //             settings
+  //           ),
+  //       };
+  //       this._initialized.resolve();
+  //     }
+  //   );
+  // }
+
+  get initialized(): Promise<void> {
+    return this._initialized.promise;
   }
 
   dispose(): void {
@@ -201,7 +235,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
       return this.creating.promise;
     }
 
-    this.logger.info('starting monitor');
+    console.info('starting monitor');
 
     try {
       // get default monitor settings from the CLI
@@ -226,7 +260,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
         },
       };
 
-      const coreClient = await this.coreClient;
+      const coreClient = await this.coreClient.promise;
 
       const { instance } = coreClient;
       const monitorRequest = new MonitorRequest();
@@ -255,13 +289,13 @@ export class MonitorService extends CoreClientAware implements Disposable {
         false,
         config
       );
-      this.logger.info(
+      console.info(
         `Using port configuration for ${this.port.protocol}:${
           this.port.address
         }: ${JSON.stringify(this.currentPortConfigSnapshot)}`
       );
       this.startMessagesHandlers();
-      this.logger.info(
+      console.info(
         `started monitor to ${this.port?.address} using ${this.port?.protocol}`
       );
       this.updateClientsSettings({
@@ -274,7 +308,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
       this.creating.resolve();
       return this.creating.promise;
     } catch (err) {
-      this.logger.warn(
+      console.warn(
         `failed starting monitor to ${this.port?.address} using ${this.port?.protocol}`
       );
       const appError = ApplicationError.is(err)
@@ -300,7 +334,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
   async createDuplex(): Promise<
     ClientDuplexStream<MonitorRequest, MonitorResponse>
   > {
-    const coreClient = await this.coreClient;
+    const coreClient = await this.coreClient.promise;
     return coreClient.client.monitor();
   }
 
@@ -320,7 +354,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
             },
           });
         }
-        this.logger.info(
+        console.info(
           `monitor to ${this.port?.address} using ${this.port?.protocol} closed by client`
         );
       })
@@ -334,7 +368,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
             },
           });
         }
-        this.logger.info(
+        console.info(
           `monitor to ${this.port?.address} using ${this.port?.protocol} closed by server`
         );
       });
@@ -352,7 +386,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
           {
             key: 'error',
             callback: async (err: Error) => {
-              this.logger.error(err);
+              console.error(err);
               const details = ServiceError.is(err) ? err.details : err.message;
               reject(createConnectionFailedError(this.port, details));
             },
@@ -362,7 +396,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
             callback: async (monitorResponse: MonitorResponse) => {
               if (monitorResponse.getError()) {
                 // TODO: Maybe disconnect
-                this.logger.error(monitorResponse.getError());
+                console.error(monitorResponse.getError());
                 return;
               }
               if (monitorResponse.getSuccess()) {
@@ -370,11 +404,9 @@ export class MonitorService extends CoreClientAware implements Disposable {
                 return;
               }
               const data = monitorResponse.getRxData();
-              const message =
-                typeof data === 'string'
-                  ? data
-                  : this.streamingTextDecoder.decode(data, { stream: true });
-              this.messages.push(...splitLines(message));
+              this.messages.push(
+                typeof data === 'string' ? new TextEncoder().encode(data) : data
+              );
             },
           },
         ];
@@ -420,7 +452,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
   async pause(): Promise<void> {
     return new Promise(async (resolve) => {
       if (!this.duplex) {
-        this.logger.warn(
+        console.warn(
           `monitor to ${this.port?.address} using ${this.port?.protocol} already stopped`
         );
         return resolve();
@@ -428,7 +460,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
       // It's enough to close the connection with the client
       // to stop the monitor process
       this.duplex.end();
-      this.logger.info(
+      console.info(
         `stopped monitor to ${this.port?.address} using ${this.port?.protocol}`
       );
 
@@ -454,7 +486,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
     if (!this.duplex) {
       throw createNotConnectedError(this.port);
     }
-    const coreClient = await this.coreClient;
+    const coreClient = await this.coreClient.promise;
     const { instance } = coreClient;
 
     const req = new MonitorRequest();
@@ -491,7 +523,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
     fqbn: string,
     swallowsPlatformNotFoundError = false
   ): Promise<PluggableMonitorSettings> {
-    const coreClient = await this.coreClient;
+    const coreClient = await this.coreClient.promise;
     const { client, instance } = coreClient;
     const req = new EnumerateMonitorPortSettingsRequest();
     req.setInstance(instance);
@@ -582,16 +614,16 @@ export class MonitorService extends CoreClientAware implements Disposable {
 
     const diffConfig = await this.maybeUpdatePortConfigSnapshot(config);
     if (!diffConfig) {
-      this.logger.info(
+      console.info(
         `No port configuration changes have been detected. No need to send configure commands to the running monitor ${this.port.protocol}:${this.port.address}.`
       );
       return;
     }
 
-    const coreClient = await this.coreClient;
+    const coreClient = await this.coreClient.promise;
     const { instance } = coreClient;
 
-    this.logger.info(
+    console.info(
       `Sending monitor request with new port configuration: ${JSON.stringify(
         MonitorPortConfiguration.toObject(false, diffConfig)
       )}`
@@ -665,7 +697,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
     }, new MonitorPortConfiguration());
 
     this.currentPortConfigSnapshot = otherPortConfigSnapshot;
-    this.logger.info(
+    console.info(
       `Updated the port configuration for ${this.port.protocol}:${
         this.port.address
       }: ${JSON.stringify(this.currentPortConfigSnapshot)}`
@@ -701,7 +733,10 @@ export class MonitorService extends CoreClientAware implements Disposable {
     if (!this.flushMessagesInterval) {
       const flushMessagesToFrontend = () => {
         if (this.messages.length) {
-          this.webSocketProvider.sendMessage(JSON.stringify(this.messages));
+          const message = JSON.stringify(
+            Buffer.concat(this.messages).toString('utf8')
+          );
+          this.webSocketProvider.sendMessage(message);
           this.messages = [];
         }
       };
@@ -709,7 +744,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
     }
 
     if (!this.onMessageReceived) {
-      this.onMessageReceived = this.webSocketProvider.onMessageReceived(
+      this.onMessageReceived = this.webSocketProvider.onDidReceiveMessage(
         (msg: string) => {
           const message: Monitor.Message = JSON.parse(msg);
 
@@ -770,13 +805,4 @@ export class MonitorService extends CoreClientAware implements Disposable {
       this.onMessageReceived = undefined;
     }
   }
-}
-
-/**
- * Splits a string into an array without removing newline char.
- * @param s string to split into lines
- * @returns an lines array
- */
-function splitLines(s: string): string[] {
-  return s.split(/(?<=\n)/);
 }

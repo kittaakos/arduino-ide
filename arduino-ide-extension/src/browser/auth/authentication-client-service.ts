@@ -1,6 +1,6 @@
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { Emitter } from '@theia/core/lib/common/event';
-import { JsonRpcProxy } from '@theia/core/lib/common/messaging/proxy-factory';
+import { RpcProxy } from '@theia/core/lib/common/messaging/proxy-factory';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { DisposableCollection } from '@theia/core/lib/common/disposable';
 import { FrontendApplicationContribution } from '@theia/core/lib/browser/frontend-application';
@@ -26,7 +26,7 @@ export class AuthenticationClientService
     AuthenticationServiceClient
 {
   @inject(AuthenticationService)
-  protected readonly service: JsonRpcProxy<AuthenticationService>;
+  protected readonly service: RpcProxy<AuthenticationService>;
 
   @inject(WindowService)
   protected readonly windowService: WindowService;

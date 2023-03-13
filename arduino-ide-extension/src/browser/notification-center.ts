@@ -4,7 +4,7 @@ import {
   postConstruct,
 } from '@theia/core/shared/inversify';
 import { Emitter } from '@theia/core/lib/common/event';
-import { JsonRpcProxy } from '@theia/core/lib/common/messaging/proxy-factory';
+import { RpcProxy } from '@theia/core/lib/common/messaging/proxy-factory';
 import { DisposableCollection } from '@theia/core/lib/common/disposable';
 import { FrontendApplicationContribution } from '@theia/core/lib/browser/frontend-application';
 import {
@@ -32,7 +32,7 @@ export class NotificationCenter
   implements NotificationServiceClient, FrontendApplicationContribution
 {
   @inject(NotificationServiceServer)
-  private readonly server: JsonRpcProxy<NotificationServiceServer>;
+  private readonly server: RpcProxy<NotificationServiceServer>;
 
   @inject(FrontendApplicationStateService)
   private readonly appStateService: FrontendApplicationStateService;
@@ -46,7 +46,7 @@ export class NotificationCenter
     new Emitter<ProgressMessage>();
   private readonly indexUpdateDidFailEmitter =
     new Emitter<IndexUpdateDidFailParams>();
-  private readonly daemonDidStartEmitter = new Emitter<string>();
+  private readonly daemonDidStartEmitter = new Emitter<number>();
   private readonly daemonDidStopEmitter = new Emitter<void>();
   private readonly configDidChangeEmitter = new Emitter<ConfigState>();
   private readonly platformDidInstallEmitter = new Emitter<{
@@ -136,7 +136,7 @@ export class NotificationCenter
     this.indexUpdateDidFailEmitter.fire(params);
   }
 
-  notifyDaemonDidStart(port: string): void {
+  notifyDaemonDidStart(port: number): void {
     this.daemonDidStartEmitter.fire(port);
   }
 
