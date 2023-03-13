@@ -6,7 +6,6 @@ import { ProgressInfo, UpdateInfo } from '../../../common/protocol/ide-updater';
 import ProgressBar from '../../components/ProgressBar';
 
 const ReactMarkdown = React.lazy<React.ComponentType<Options>>(
-  // @ts-expect-error see above
   () => import('react-markdown')
 );
 
