@@ -102,6 +102,7 @@ export class MonitorWidget extends BaseWidget {
     this.editorContainer.node.tabIndex = -1;
     this.lineNumber2Timestamp = {};
     this.toDisposeOnReset = new DisposableCollection();
+    this.toDispose.push(Disposable.create(() => this.headerRoot.unmount()));
   }
 
   @postConstruct()
@@ -109,7 +110,6 @@ export class MonitorWidget extends BaseWidget {
     this.toDisposeOnReset.dispose();
     this.toDisposeOnReset.pushAll([
       Disposable.create(() => this.monitorManagerProxy.disconnect()),
-      Disposable.create(() => this.headerRoot.unmount()),
       Disposable.create(() => this.monitorManagerProxy.disconnect()),
       Disposable.create(() => this.clearConsole()),
       this.preference.onPreferenceChanged(({ preferenceName, newValue }) => {
@@ -128,7 +128,7 @@ export class MonitorWidget extends BaseWidget {
       }),
       this.monitorModel.onChange(({ property }) => {
         switch (property) {
-          case 'connected': {
+          case 'connectionStatus': {
             this.handleDidChangeConnected();
             break;
           }
@@ -164,6 +164,11 @@ export class MonitorWidget extends BaseWidget {
 
   async clearConsole(): Promise<void> {
     return this.resourceProvider.resource.reset();
+  }
+
+  override dispose(): void {
+    this.toDisposeOnReset.dispose();
+    super.dispose();
   }
 
   get text(): string | undefined {

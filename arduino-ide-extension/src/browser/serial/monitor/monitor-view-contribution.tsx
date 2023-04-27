@@ -180,7 +180,7 @@ export class MonitorViewContribution
   protected async toggle(): Promise<void> {
     const widget = this.tryGetWidget();
     if (widget) {
-      widget.dispose();
+      widget.close();
     } else {
       await this.openView({ activate: true, reveal: true });
     }
