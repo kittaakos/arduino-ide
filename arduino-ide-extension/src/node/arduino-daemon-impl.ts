@@ -171,8 +171,8 @@ export class ArduinoDaemonImpl
     const args = await this.getSpawnArgs();
     const cliPath = this.getExecPath();
     const ready = new Deferred<{ daemon: ChildProcess; port: string }>();
-    const options = { shell: true };
-    const daemon = spawn(`"${cliPath}"`, args, options);
+    this.onData(`Spawning ${cliPath} with ${JSON.stringify(args)}`);
+    const daemon = spawn(cliPath, args);
 
     // If the process exists right after the daemon gRPC server has started (due to an invalid port, unknown address, TCP port in use, etc.)
     // we have no idea about the root cause unless we sniff into the first data package and dispatch the logic on that. Note, we get a exit code 1.
