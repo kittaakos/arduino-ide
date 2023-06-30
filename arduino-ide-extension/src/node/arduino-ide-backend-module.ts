@@ -92,15 +92,12 @@ import {
   MonitorManagerProxyClient,
   MonitorManagerProxyPath,
 } from '../common/protocol/monitor-service';
-import { MonitorService, MonitorServiceName } from './monitor-service';
 import { MonitorSettingsProvider } from './monitor-settings/monitor-settings-provider';
 import { MonitorSettingsProviderImpl } from './monitor-settings/monitor-settings-provider-impl';
 import {
   MonitorServiceFactory,
   MonitorServiceFactoryOptions,
 } from './monitor-service-factory';
-import WebSocketProviderImpl from './web-socket/web-socket-provider';
-import { WebSocketProvider } from './monitor-service/web-socket-provider';
 import { ClangFormatter } from './clang-formatter';
 import { FormatterPath } from '../common/protocol/formatter';
 import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';
@@ -252,9 +249,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(MonitorSettingsProviderImpl).toSelf().inSingletonScope();
   bind(MonitorSettingsProvider).toService(MonitorSettingsProviderImpl);
 
-  bind(WebSocketProviderImpl).toSelf();
-  bind(WebSocketProvider).toService(WebSocketProviderImpl);
-
   bind(MonitorServiceFactory).toFactory(
     ({ container }) =>
       (options: MonitorServiceFactoryOptions) => {
@@ -346,7 +340,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     'config', // Logger for the CLI config reading and manipulation
     'sketches-service', // For creating, loading, and cloning sketches
     MonitorManagerName, // Logger for the monitor manager and its services
-    MonitorServiceName,
   ].forEach((name) => bindChildLogger(bind, name));
 
   // Cloud sketchbook bindings

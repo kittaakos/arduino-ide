@@ -1,26 +1,31 @@
+import { JsonRpcProxyFactory } from '@theia/core/lib/common/messaging/proxy-factory';
+import { IPCEntryPoint } from '@theia/core/lib/node/messaging/ipc-protocol';
 import yargs from '@theia/core/shared/yargs';
-// import { FileSystemWatcherServiceClient } from '../../common/filesystem-watcher-protocol';
-// import { NsfwFileSystemWatcherService } from './nsfw-filesystem-service';
+import {
+  MonitorServiceClient,
+  MonitorServiceOptions,
+} from './monitor-service-protocol';
+import { MonitorService } from './monitor-service-server';
 
-const options: {
-  verbose?: boolean;
-} = yargs
-  .option('verbose', {
-    default: false,
-    alias: 'v',
-    type: 'boolean',
-  })
+const options = yargs
   .option('monitorOptions', {
     alias: 'o',
     type: 'string',
     coerce: JSON.parse,
-  }).argv;
+  })
+  .option('verbose', {
+    default: false,
+    alias: 'v',
+    type: 'boolean',
+  }).argv as unknown as {
+  verbose?: boolean;
+  monitorOptions: MonitorServiceOptions;
+};
 
 export default <IPCEntryPoint>((connection) => {
-  const server = new NsfwFileSystemWatcherService(options);
-  const factory = new JsonRpcProxyFactory<FileSystemWatcherServiceClient>(
-    server
-  );
+  const { monitorOptions } = options;
+  const server = new MonitorService(monitorOptions);
+  const factory = new JsonRpcProxyFactory<MonitorServiceClient>(server);
   server.setClient(factory.createProxy());
   factory.listen(connection);
 });

@@ -39,11 +39,11 @@ export class ArduinoDaemonImpl
   private readonly processUtils: ProcessUtils;
 
   private readonly toDispose = new DisposableCollection();
-  private readonly onDaemonStartedEmitter = new Emitter<string>();
+  private readonly onDaemonStartedEmitter = new Emitter<number>();
   private readonly onDaemonStoppedEmitter = new Emitter<void>();
 
   private _running = false;
-  private _port = new Deferred<string>();
+  private _port = new Deferred<number>();
 
   // Backend application lifecycle.
 
@@ -53,18 +53,18 @@ export class ArduinoDaemonImpl
 
   // Daemon API
 
-  async getPort(): Promise<string> {
+  async getPort(): Promise<number> {
     return this._port.promise;
   }
 
-  async tryGetPort(): Promise<string | undefined> {
+  async tryGetPort(): Promise<number | undefined> {
     if (this._running) {
       return this._port.promise;
     }
     return undefined;
   }
 
-  async start(): Promise<string> {
+  async start(): Promise<number> {
     try {
       this.toDispose.dispose(); // This will `kill` the previously started daemon process, if any.
       const cliPath = this.getExecPath();
@@ -117,13 +117,13 @@ export class ArduinoDaemonImpl
     this.toDispose.dispose();
   }
 
-  async restart(): Promise<string> {
+  async restart(): Promise<number> {
     return this.start();
   }
 
   // Backend only daemon API
 
-  get onDaemonStarted(): Event<string> {
+  get onDaemonStarted(): Event<number> {
     return this.onDaemonStartedEmitter.event;
   }
 
@@ -166,11 +166,11 @@ export class ArduinoDaemonImpl
 
   protected async spawnDaemonProcess(): Promise<{
     daemon: ChildProcess;
-    port: string;
+    port: number;
   }> {
     const args = await this.getSpawnArgs();
     const cliPath = this.getExecPath();
-    const ready = new Deferred<{ daemon: ChildProcess; port: string }>();
+    const ready = new Deferred<{ daemon: ChildProcess; port: number }>();
     const options = { shell: true };
     const daemon = spawn(`"${cliPath}"`, args, options);
 
@@ -188,7 +188,7 @@ export class ArduinoDaemonImpl
           return;
         }
 
-        let port = '';
+        let port: number | undefined = undefined;
         let address = '';
         message
           .split('\n')
@@ -197,7 +197,11 @@ export class ArduinoDaemonImpl
             try {
               const parsedLine = JSON.parse(line);
               if ('Port' in parsedLine) {
-                port = parsedLine.Port;
+                const maybePort = parsedLine.Port;
+                const parsedPort = Number.parseInt(maybePort, 10);
+                if (!Number.isNaN(parsedPort)) {
+                  port = parsedPort;
+                }
               }
               if ('IP' in parsedLine) {
                 address = parsedLine.IP;
@@ -207,7 +211,7 @@ export class ArduinoDaemonImpl
             }
           });
 
-        if (port.length && address.length) {
+        if (typeof port === 'number' && address.length) {
           grpcServerIsReady = true;
           ready.resolve({ daemon, port });
         }
@@ -239,7 +243,7 @@ export class ArduinoDaemonImpl
     return ready.promise;
   }
 
-  private fireDaemonStarted(port: string): void {
+  private fireDaemonStarted(port: number): void {
     this._running = true;
     this._port.resolve(port);
     this.onDaemonStartedEmitter.fire(port);
@@ -252,7 +256,7 @@ export class ArduinoDaemonImpl
     }
     this._running = false;
     this._port.reject(); // Reject all pending.
-    this._port = new Deferred<string>();
+    this._port = new Deferred<number>();
     this.onDaemonStoppedEmitter.fire();
     this.notificationService.notifyDaemonDidStop();
   }
