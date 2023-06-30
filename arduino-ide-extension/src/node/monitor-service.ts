@@ -28,7 +28,7 @@ import {
   MonitorResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/monitor_pb';
 import { CoreClientAware } from './core-client-provider';
-import { WebSocketProvider } from './web-socket/web-socket-provider';
+import { WebSocketProvider } from './monitor-service/web-socket-provider';
 import { Port as RpcPort } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
 import { MonitorSettingsProvider } from './monitor-settings/monitor-settings-provider';
 import {

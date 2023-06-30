@@ -1,4 +1,4 @@
-import * as fs from 'node:fs';
+import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import {
   injectable,
@@ -7,7 +7,6 @@ import {
 } from '@theia/core/shared/inversify';
 import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import { FileUri } from '@theia/core/lib/node/file-uri';
-import { promisify } from 'util';
 import { MonitorSettingsProvider } from './monitor-settings-provider';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import {
@@ -16,6 +15,7 @@ import {
 } from './monitor-settings-utils';
 import { ILogger } from '@theia/core';
 import { PluggableMonitorSettings } from '../../common/protocol';
+import { ErrnoException } from '../utils/errors';
 
 const MONITOR_SETTINGS_FILE = 'pluggable-monitor-settings.json';
 
@@ -47,7 +47,7 @@ export class MonitorSettingsProviderImpl implements MonitorSettingsProvider {
     );
 
     // read existing settings
-    await this.readSettingsFromFS();
+    this.monitorSettings = await this.readSettings();
 
     // init is done, resolve the deferred and unblock any call that was waiting for it
     this.ready.resolve();
@@ -82,7 +82,7 @@ export class MonitorSettingsProviderImpl implements MonitorSettingsProvider {
     );
     this.monitorSettings[monitorId] = newSettings;
 
-    await this.writeSettingsToFS();
+    await this.writeSettings(this.monitorSettings);
     return newSettings;
   }
 
@@ -93,33 +93,41 @@ export class MonitorSettingsProviderImpl implements MonitorSettingsProvider {
     return reconcileSettings(newSettings, defaultSettings);
   }
 
-  private async readSettingsFromFS(): Promise<void> {
-    const rawJson = await promisify(fs.readFile)(
-      this.pluggableMonitorSettingsPath,
-      {
-        encoding: 'utf8',
-        flag: 'a+', // a+ = append and read, creating the file if it doesn't exist
-      }
-    );
-
-    if (!rawJson) {
-      this.monitorSettings = {};
-    }
-
+  private async readSettings(): Promise<
+    Record<string, PluggableMonitorSettings>
+  > {
+    let rawJson: string | undefined;
     try {
-      this.monitorSettings = JSON.parse(rawJson);
-    } catch (error) {
+      rawJson = await fs.readFile(this.pluggableMonitorSettingsPath, {
+        encoding: 'utf8',
+      });
+    } catch (err) {
+      if (!ErrnoException.isENOENT(err)) {
+        throw err;
+      }
+    }
+    if (!rawJson) {
+      return {};
+    }
+    try {
+      const settings = JSON.parse(rawJson);
+      return settings;
+    } catch (err) {
       this.logger.error(
-        'Could not parse the pluggable monitor settings file. Using empty file.'
+        'Could not parse the pluggable monitor settings file. Ignoring settings file.',
+        err
       );
-      this.monitorSettings = {};
+      return {};
     }
   }
 
-  private async writeSettingsToFS(): Promise<void> {
-    await promisify(fs.writeFile)(
+  private async writeSettings(
+    settings: Record<string, PluggableMonitorSettings>
+  ): Promise<void> {
+    await fs.writeFile(
       this.pluggableMonitorSettingsPath,
-      JSON.stringify(this.monitorSettings)
+      JSON.stringify(settings),
+      { encoding: 'utf8' }
     );
   }
 
