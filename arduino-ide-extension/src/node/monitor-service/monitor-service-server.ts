@@ -35,7 +35,7 @@ import {
 import { ServiceError } from '../service-error';
 import {
   MonitorServiceClient,
-  MonitorServiceOptions,
+  AcquireMonitorParams,
   MonitorServiceServer,
 } from './monitor-service-protocol';
 import WebSocketProviderImpl from './web-socket-provider';
@@ -108,7 +108,7 @@ export class MonitorService implements Disposable, MonitorServiceServer {
     | MonitorPortConfiguration.AsObject
     | undefined;
 
-  constructor(private readonly options: MonitorServiceOptions) {
+  constructor(private readonly options: AcquireMonitorParams) {
     this.webSocketProvider = new WebSocketProviderImpl();
     this.toDisposeOnClose.pushAll([
       this.webSocketProvider,

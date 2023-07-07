@@ -3,7 +3,7 @@ import { IPCEntryPoint } from '@theia/core/lib/node/messaging/ipc-protocol';
 import yargs from '@theia/core/shared/yargs';
 import {
   MonitorServiceClient,
-  MonitorServiceOptions,
+  AcquireMonitorParams,
 } from './monitor-service-protocol';
 import { MonitorService } from './monitor-service-server';
 
@@ -19,7 +19,7 @@ const options = yargs
     type: 'boolean',
   }).argv as unknown as {
   verbose?: boolean;
-  monitorOptions: MonitorServiceOptions;
+  monitorOptions: AcquireMonitorParams;
 };
 
 export default <IPCEntryPoint>((connection) => {
