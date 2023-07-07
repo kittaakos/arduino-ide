@@ -8,7 +8,9 @@ arduino-ide-extension/Examples/
 !electron/build/
 src-gen/
 electron/build/webpack.config.js
+electron/build/gen-webpack.node.config.js
 gen-webpack.config.js
+gen-webpack.node.config.js
 .DS_Store
 # switching from `electron` to `browser` in dev mode.
 .browser_modules

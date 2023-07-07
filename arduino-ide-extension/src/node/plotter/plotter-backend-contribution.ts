@@ -1,5 +1,5 @@
-import * as path from 'node:path';
-import * as express from '@theia/core/shared/express';
+import path from 'node:path';
+import express from '@theia/core/shared/express';
 import { injectable } from '@theia/core/shared/inversify';
 import { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
 
@@ -8,15 +8,16 @@ export class PlotterBackendContribution
   implements BackendApplicationContribution
 {
   configure(app: express.Application): void {
-    const index = require.resolve(
-      'arduino-serial-plotter-webapp/build/index.html'
+    const plotterRootPath = path.resolve(
+      __dirname,
+      '../../../../electron-app/lib/backend/plotter-webapp'
     );
-    app.use(express.static(path.join(index, '..')));
+    app.use(express.static(plotterRootPath));
     app.get('/plotter', (req, res) => {
       console.log(
         `Serving serial plotter on http://${req.headers.host}${req.url}`
       );
-      res.sendFile(index);
+      res.sendFile(path.join(plotterRootPath, 'index.html'));
     });
   }
 }

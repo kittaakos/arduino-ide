@@ -1,4 +1,4 @@
-import * as yargs from '@theia/core/shared/yargs';
+import yargs from '@theia/core/shared/yargs';
 import { JsonRpcProxyFactory } from '@theia/core';
 import { NoDelayDisposalTimeoutNsfwFileSystemWatcherService } from './nsfw-filesystem-service';
 import type { IPCEntryPoint } from '@theia/core/lib/node/messaging/ipc-protocol';

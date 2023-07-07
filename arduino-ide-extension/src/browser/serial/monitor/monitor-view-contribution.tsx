@@ -1,4 +1,4 @@
-import * as React from '@theia/core/shared/react';
+import React from '@theia/core/shared/react';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { AbstractViewContribution, codicon } from '@theia/core/lib/browser';
 import { MonitorWidget } from './monitor-widget';

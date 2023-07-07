@@ -281,13 +281,13 @@ ${fs
     );
     await exec(
       'yarn',
-      ['--cwd', join(repoRoot, 'electron', 'build'), 'build'],
-      `Building the ${productName} application`
+      ['--cwd', join(repoRoot, 'electron', 'build'), 'rebuild'],
+      'Rebuilding native dependencies'
     );
     await exec(
       'yarn',
-      ['--cwd', join(repoRoot, 'electron', 'build'), 'rebuild'],
-      'Rebuilding native dependencies'
+      ['--cwd', join(repoRoot, 'electron', 'build'), 'build'],
+      `Building the ${productName} application`
     );
 
     //------------------------------------------------------------------------------+

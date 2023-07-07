@@ -1,4 +1,4 @@
-import * as PQueue from 'p-queue';
+import PQueue from 'p-queue';
 import { injectable } from '@theia/core/shared/inversify';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import { OutputUri } from '@theia/output/lib/common/output-uri';

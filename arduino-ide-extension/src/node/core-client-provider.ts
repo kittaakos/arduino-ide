@@ -1,5 +1,9 @@
 import { join } from 'node:path';
-import * as grpc from '@grpc/grpc-js';
+import {
+  ClientReadableStream,
+  credentials,
+  makeClientConstructor,
+} from '@grpc/grpc-js';
 import {
   inject,
   injectable,
@@ -17,7 +21,7 @@ import {
   UpdateLibrariesIndexRequest,
   UpdateLibrariesIndexResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/commands_pb';
-import * as commandsGrpcPb from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
+import commandsGrpcPb from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
 import {
   IndexType,
   IndexUpdateDidCompleteParams,
@@ -199,7 +203,7 @@ export class CoreClientProvider {
     address: string
   ): Promise<CoreClientProvider.Client> {
     // https://github.com/agreatfool/grpc_tools_node_protoc_ts/blob/master/doc/grpcjs_support.md#usage
-    const ArduinoCoreServiceClient = grpc.makeClientConstructor(
+    const ArduinoCoreServiceClient = makeClientConstructor(
       // @ts-expect-error: ignore
       commandsGrpcPb['cc.arduino.cli.commands.v1.ArduinoCoreService'],
       'ArduinoCoreServiceService'
@@ -207,7 +211,7 @@ export class CoreClientProvider {
     ) as any;
     const client = new ArduinoCoreServiceClient(
       address,
-      grpc.credentials.createInsecure(),
+      credentials.createInsecure(),
       this.channelOptions
     ) as ArduinoCoreServiceClient;
 
@@ -361,7 +365,7 @@ export class CoreClientProvider {
   private async doUpdateIndex<
     R extends UpdateIndexResponse | UpdateLibrariesIndexResponse
   >(
-    responseProvider: () => grpc.ClientReadableStream<R>,
+    responseProvider: () => ClientReadableStream<R>,
     progressHandler?: IndexesUpdateProgressHandler,
     task?: string
   ): Promise<void> {

@@ -12,4 +12,4 @@ process.env.THEIA_PLUGINS = [
 ]
   .filter(Boolean)
   .join(',');
-require('../src-gen/frontend/electron-main.js');
+require('../lib/backend/electron-main.js');

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
-import * as yaml from 'js-yaml';
-import * as grpc from '@grpc/grpc-js';
+import yaml from 'js-yaml';
+import grpc from '@grpc/grpc-js';
 import { injectable, inject, named } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
 import { ILogger } from '@theia/core/lib/common/logger';
@@ -21,7 +21,7 @@ import {
   WriteRequest,
 } from './cli-protocol/cc/arduino/cli/settings/v1/settings_pb';
 import { SettingsServiceClient } from './cli-protocol/cc/arduino/cli/settings/v1/settings_grpc_pb';
-import * as serviceGrpcPb from './cli-protocol/cc/arduino/cli/settings/v1/settings_grpc_pb';
+import serviceGrpcPb from './cli-protocol/cc/arduino/cli/settings/v1/settings_grpc_pb';
 import { ArduinoDaemonImpl } from './arduino-daemon-impl';
 import { DefaultCliConfig, CLI_CONFIG } from './cli-config';
 import { Deferred } from '@theia/core/lib/common/promise-util';

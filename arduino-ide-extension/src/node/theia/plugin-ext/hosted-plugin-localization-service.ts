@@ -1,4 +1,4 @@
-import * as fs from '@theia/core/shared/fs-extra';
+import fs from '@theia/core/shared/fs-extra';
 import { injectable } from '@theia/core/shared/inversify';
 import { HostedPluginLocalizationService as TheiaHostedPluginLocalizationService } from '@theia/plugin-ext/lib/hosted/node/hosted-plugin-localization-service';
 

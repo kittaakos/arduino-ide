@@ -9,7 +9,7 @@
     "node-log-rotate": "^0.1.5"
   },
   "devDependencies": {
-    "@theia/cli": "1.37.0",
+    "@theia/cli": "1.39.0",
     "cross-env": "^7.0.2",
     "electron-builder": "23.6.0",
     "electron-notarize": "^1.1.1",
@@ -18,7 +18,7 @@
     "shelljs": "^0.8.3"
   },
   "scripts": {
-    "build": "yarn download:plugins && theia build --mode production && yarn patch",
+    "build": "yarn download:plugins && theia build --mode production",
     "rebuild": "yarn theia rebuild:electron",
     "package": "cross-env DEBUG=* && electron-builder --publish=never",
     "download:plugins": "theia download:plugins",
@@ -61,19 +61,16 @@
       "src-gen",
       "lib",
       "scripts",
-      "!node_modules/**/*.{ts,map}",
-      "!node_modules/**/*.spec.js",
-      "!node_modules/@theia/**/test/*",
-      "!node_modules/@theia/**/src/*.ts",
-      "!node_modules/@theia/**/lib/*browser/*",
-      "node_modules/@theia/core/lib/browser/*",
-      "!node_modules/@typefox/monaco-editor-core/*",
-      "!node_modules/electron/**"
+      "!**node_modules/**"
     ],
     "extraResources": [
       {
         "from": "plugins",
         "to": "app/plugins"
+      },
+      {
+        "from": "node_modules/arduino-ide-extension/build",
+        "to": "app/build"
       }
     ],
     "win": {
