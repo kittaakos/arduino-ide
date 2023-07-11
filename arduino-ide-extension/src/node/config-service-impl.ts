@@ -28,6 +28,7 @@ import { Deferred } from '@theia/core/lib/common/promise-util';
 import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import { deepClone, nls } from '@theia/core';
 import { ErrnoException } from './utils/errors';
+import { arduinoCliPath } from './binaries';
 
 const deepmerge = require('deepmerge');
 
@@ -222,8 +223,7 @@ export class ConfigServiceImpl
   }
 
   private async getFallbackCliConfig(): Promise<DefaultCliConfig> {
-    const cliPath = this.daemon.getExecPath();
-    const rawJson = await spawnCommand(cliPath, [
+    const rawJson = await spawnCommand(arduinoCliPath, [
       'config',
       'dump',
       'format',
@@ -233,8 +233,12 @@ export class ConfigServiceImpl
   }
 
   private async initCliConfigTo(fsPathToDir: string): Promise<void> {
-    const cliPath = this.daemon.getExecPath();
-    await spawnCommand(cliPath, ['config', 'init', '--dest-dir', fsPathToDir]);
+    await spawnCommand(arduinoCliPath, [
+      'config',
+      'init',
+      '--dest-dir',
+      fsPathToDir,
+    ]);
   }
 
   private async mapCliConfigToAppConfig(

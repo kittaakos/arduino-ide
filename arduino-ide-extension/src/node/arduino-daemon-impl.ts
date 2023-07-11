@@ -15,7 +15,7 @@ import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
 import { ArduinoDaemon, NotificationServiceServer } from '../common/protocol';
 import { CLI_CONFIG } from './cli-config';
-import { getExecPath } from './exec-util';
+import { arduinoCliPath } from './binaries';
 import { SettingsReader } from './settings-reader';
 import { ProcessUtils } from '@theia/core/lib/node/process-utils';
 
@@ -68,8 +68,6 @@ export class ArduinoDaemonImpl
   async start(): Promise<string> {
     try {
       this.toDispose.dispose(); // This will `kill` the previously started daemon process, if any.
-      const cliPath = this.getExecPath();
-      this.onData(`Starting daemon from ${cliPath}...`);
       const { daemon, port } = await this.spawnDaemonProcess();
       // Watchdog process for terminating the daemon process when the backend app terminates.
       spawn(
@@ -132,10 +130,6 @@ export class ArduinoDaemonImpl
     return this.onDaemonStoppedEmitter.event;
   }
 
-  getExecPath(): string {
-    return getExecPath('arduino-cli');
-  }
-
   protected async getSpawnArgs(): Promise<string[]> {
     const [configDirUri, debug] = await Promise.all([
       this.envVariablesServer.getConfigDirUri(),
@@ -170,13 +164,12 @@ export class ArduinoDaemonImpl
     port: string;
   }> {
     const args = await this.getSpawnArgs();
-    const cliPath = this.getExecPath();
     const ready = new Deferred<{ daemon: ChildProcess; port: string }>();
     const options = {
-      shell: true,
       env: { ...deepClone(process.env), NO_COLOR: String(true) },
     };
-    const daemon = spawn(`"${cliPath}"`, args, options);
+    this.onData(`Starting daemon from ${arduinoCliPath}...`);
+    const daemon = spawn(arduinoCliPath, args, options);
 
     // If the process exists right after the daemon gRPC server has started (due to an invalid port, unknown address, TCP port in use, etc.)
     // we have no idea about the root cause unless we sniff into the first data package and dispatch the logic on that. Note, we get a exit code 1.

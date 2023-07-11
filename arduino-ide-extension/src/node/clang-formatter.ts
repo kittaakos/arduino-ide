@@ -6,7 +6,8 @@ import { constants, promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigService } from '../common/protocol';
 import { Formatter, FormatterOptions } from '../common/protocol/formatter';
-import { getExecPath, spawnCommand } from './exec-util';
+import { clangFormatPath } from './binaries';
+import { spawnCommand } from './exec-util';
 
 @injectable()
 export class ClangFormatter implements Formatter {
@@ -25,19 +26,14 @@ export class ClangFormatter implements Formatter {
     formatterConfigFolderUris: string[];
     options?: FormatterOptions;
   }): Promise<string> {
-    const execPath = this.execPath();
     const args = await this.styleArgs(formatterConfigFolderUris, options);
     const formatted = await spawnCommand(
-      execPath,
+      clangFormatPath,
       args,
       console.error,
       content
     );
     return formatted;
-  }
-
-  private execPath(): string {
-    return getExecPath('clang-format');
   }
 
   /**

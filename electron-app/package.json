@@ -23,8 +23,9 @@
   },
   "devDependencies": {
     "@theia/cli": "1.39.0",
+    "copy-webpack-plugin": "^8.1.1",
     "electron": "^23.2.4",
-    "copy-webpack-plugin": "^8.1.1"
+    "webpack-permissions-plugin": "^1.0.9"
   },
   "scripts": {
     "prepare": "theia build --mode development",

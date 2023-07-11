@@ -7,6 +7,7 @@ import { safeLoad, safeDump } from 'js-yaml';
 import { ArduinoDaemonImpl } from '../../node/arduino-daemon-impl';
 import { spawnCommand } from '../../node/exec-util';
 import { CLI_CONFIG } from '../../node/cli-config';
+import { arduinoCliPath } from '../../node/binaries';
 
 const track = temp.track();
 
@@ -43,9 +44,13 @@ class SilentArduinoDaemonImpl extends ArduinoDaemonImpl {
   }
 
   private async initCliConfig(): Promise<string> {
-    const cliPath = this.getExecPath();
     const destDir = track.mkdirSync();
-    await spawnCommand(cliPath, ['config', 'init', '--dest-dir', destDir]);
+    await spawnCommand(arduinoCliPath, [
+      'config',
+      'init',
+      '--dest-dir',
+      destDir,
+    ]);
     const content = fs.readFileSync(path.join(destDir, CLI_CONFIG), {
       encoding: 'utf8',
     });

@@ -7,6 +7,7 @@ import { expect } from 'chai';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import temp from 'temp';
+import { clangFormatPath } from '../../node/binaries';
 import {
   clangFormatFilename,
   ClangFormatter,
@@ -75,17 +76,13 @@ const singleClangStyles: ClangStyle[] = [
   },
 ];
 
-async function expectNoChanges(
-  formatter: ClangFormatter,
-  styleArg: string
-): Promise<void> {
+async function expectNoChanges(styleArg: string): Promise<void> {
   const minimalContent = `
 void setup() {}
 void loop() {}
 `.trim();
-  const execPath = formatter['execPath']();
   const actual = await spawnCommand(
-    execPath,
+    clangFormatPath,
     ['-style', styleArg],
     console.error,
     minimalContent
@@ -122,7 +119,7 @@ describe('clang-formatter', () => {
       it(`should execute the formatter with a single ${
         Array.isArray(value) ? 'array' : typeof value
       } type style configuration value: ${styleArg}`, async () => {
-        await expectNoChanges(formatter, styleArg);
+        await expectNoChanges(styleArg);
       })
     );
 
@@ -133,7 +130,7 @@ describe('clang-formatter', () => {
         return config;
       }, {} as ClangConfiguration)
     );
-    await expectNoChanges(formatter, styleArg);
+    await expectNoChanges(styleArg);
   });
 
   it('should format with the default styles', async () => {

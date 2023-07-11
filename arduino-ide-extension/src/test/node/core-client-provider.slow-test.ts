@@ -11,7 +11,7 @@ import {
   CoreService,
   LibraryService,
 } from '../../common/protocol';
-import { ArduinoDaemonImpl } from '../../node/arduino-daemon-impl';
+import { arduinoCliPath } from '../../node/binaries';
 import { CLI_CONFIG, DefaultCliConfig } from '../../node/cli-config';
 import { BoardListRequest } from '../../node/cli-protocol/cc/arduino/cli/commands/v1/board_pb';
 import { CoreClientProvider } from '../../node/core-client-provider';
@@ -276,12 +276,10 @@ async function prepareTestConfigDir(
 ): Promise<string> {
   const params = { configDirPath: newTempConfigDirPath(), configOverrides };
   const container = await createContainer(params);
-  const daemon = container.get<ArduinoDaemonImpl>(ArduinoDaemonImpl);
-  const cliPath = await daemon.getExecPath();
   const configDirUriProvider =
     container.get<ConfigDirUriProvider>(ConfigDirUriProvider);
   const configDirPath = FileUri.fsPath(configDirUriProvider.configDirUri());
-  await coreUpdateIndex(cliPath, configDirPath);
+  await coreUpdateIndex(arduinoCliPath, configDirPath);
   return configDirPath;
 }
 
