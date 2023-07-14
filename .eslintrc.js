@@ -15,7 +15,7 @@ module.exports = {
         '.browser_modules/*',
         'docs/*',
         'scripts/*',
-        'electron-app/*',
+        'electron-app/lib/*',
         '!electron-app/webpack.config.js',
         'plugins/*',
         'arduino-ide-extension/src/node/cli-protocol',

@@ -121,6 +121,7 @@ jobs:
           IS_NIGHTLY: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
           IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
           CAN_SIGN: ${{ secrets[matrix.config.certificate-secret] != '' }}
+          NODE_ENV: production
         run: |
           # See: https://www.electron.build/code-signing
           if [ $CAN_SIGN = false ]; then
@@ -136,8 +137,13 @@ jobs:
             npm config set msvs_version 2017 --global
           fi
           npx node-gyp install
-          yarn --cwd ./electron/packager/
-          yarn --cwd ./electron/packager/ package
+          yarn
+          yarn build
+          yarn lint
+          yarn test
+          yarn test:slow
+          yarn --cwd ./electron-app rebuild
+          yarn --cwd ./electron-app package
 
       - name: Upload [GitHub Actions]
         uses: actions/upload-artifact@v3

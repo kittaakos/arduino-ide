@@ -14,4 +14,11 @@ mainWindowConfig.plugins?.push(
   })
 );
 
+if (process.env.NODE_ENV === 'production') {
+  console.info(
+    "Detected NODE_ENV=production. Overriding 'mode' with 'production'"
+  );
+  configs.forEach((config) => (config.mode = 'production'));
+}
+
 module.exports = configs;
