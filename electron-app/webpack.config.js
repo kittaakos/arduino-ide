@@ -2,6 +2,7 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 const path = require('node:path');
 const resolvePackagePath = require('resolve-package-path');
 const webpack = require('webpack');
+const PermissionsOutputPlugin = require('webpack-permissions-plugin');
 const frontend = require('./gen-webpack.config');
 const backend = require('./gen-webpack.node.config');
 
@@ -51,10 +52,11 @@ if (!arduinoSerialPlotterWebAppPackageJson) {
     "Could not resolve the 'arduino-serial-plotter-webapp' package."
   );
 }
-// Copy all IDE2 resources such binaries, translation VSIXs, clang-format file, and the serial plotter web app.
+// Copy all the IDE2 binaries and the plotter web app.
 backend.config.plugins.push(
   new CopyWebpackPlugin({
     patterns: [
+      // binaries
       {
         from: path.join(arduinoIdeExtensionPackageJson, '..', 'resources'),
         to: path.resolve(__dirname, 'lib', 'backend', 'resources'),
@@ -62,6 +64,7 @@ backend.config.plugins.push(
           ignore: ['**/i18n/**'],
         },
       },
+      // plotter app
       {
         from: path.join(arduinoSerialPlotterWebAppPackageJson, '..', 'build'),
         to: path.resolve(
@@ -71,6 +74,20 @@ backend.config.plugins.push(
           'resources',
           'arduino-serial-plotter-webapp'
         ),
+      },
+    ],
+  }),
+  new PermissionsOutputPlugin({
+    buildFiles: [
+      {
+        path: path.join(
+          __dirname,
+          'lib',
+          'backend',
+          'resources',
+          'arduino-cli'
+        ),
+        fileMode: '777',
       },
     ],
   })

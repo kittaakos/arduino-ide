@@ -137,12 +137,15 @@ jobs:
           fi
           npx node-gyp install
           yarn
+
+          yarn --cwd ./arduino-ide-extension build
+          yarn --cwd ./arduino-ide-extension lint
+          yarn --cwd ./arduino-ide-extension test
+          yarn --cwd ./arduino-ide-extension test:slow
+
           export NODE_ENV=production
-          yarn build
-          yarn lint
-          yarn test
-          yarn test:slow
           yarn --cwd ./electron-app rebuild
+          yarn --cwd ./electron-app build
           yarn --cwd ./electron-app package
 
       - name: Upload [GitHub Actions]
