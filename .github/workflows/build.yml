@@ -121,7 +121,6 @@ jobs:
           IS_NIGHTLY: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
           IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
           CAN_SIGN: ${{ secrets[matrix.config.certificate-secret] != '' }}
-          NODE_ENV: production
         run: |
           # See: https://www.electron.build/code-signing
           if [ $CAN_SIGN = false ]; then
@@ -138,6 +137,7 @@ jobs:
           fi
           npx node-gyp install
           yarn
+          export NODE_ENV=production
           yarn build
           yarn lint
           yarn test

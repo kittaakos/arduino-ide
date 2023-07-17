@@ -7,7 +7,6 @@
   "description": "Arduino IDE",
   "main": "arduino-ide-electron-main.js",
   "dependencies": {
-    "@theia/application-package": "1.39.0",
     "@theia/core": "1.39.0",
     "@theia/debug": "1.39.0",
     "@theia/editor": "1.39.0",

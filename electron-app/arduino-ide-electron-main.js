@@ -1,8 +1,9 @@
 // @ts-check
 const os = require('os');
 const path = require('path');
-const { environment } = require('@theia/application-package/lib/environment');
-if (!environment.electron.isDevMode()) {
+const config = require('./package.json').theia.frontend.config;
+// `buildDate` is only available in the bundled application.
+if (config.buildDate) {
   // `plugins` folder inside IDE2. IDE2 is shipped with these VS Code extensions. Such as cortex-debug, vscode-cpp, and translations.
   process.env.THEIA_DEFAULT_PLUGINS = `local-dir:${path.resolve(
     __dirname,

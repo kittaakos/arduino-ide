@@ -20,7 +20,7 @@ mainWindowConfig.plugins?.push(
 
 if (process.env.NODE_ENV === 'production') {
   console.info(
-    "Detected NODE_ENV=production. Overriding 'mode' with 'production'"
+    "Detected NODE_ENV=production. Overriding 'mode' with 'production' and minimizing code."
   );
   frontend.forEach((config) => (config.mode = 'production'));
   backend.config.optimization.minimize = true;
@@ -74,11 +74,6 @@ backend.config.plugins.push(
       },
     ],
   })
-);
-// rewire the customized electron-main
-backend.config.entry['electron-main'] = path.join(
-  __dirname,
-  'arduino-ide-electron-main.js'
 );
 
 module.exports = [...frontend, backend.config];
