@@ -9,7 +9,7 @@
     "compose-changelog": "node ./scripts/compose-changelog.js",
     "download-cli": "node ./scripts/download-cli.js",
     "download-fwuploader": "node ./scripts/download-fwuploader.js",
-    "copy-i18n": "ncp ../i18n ./build/i18n",
+    "copy-i18n": "ncp ../i18n ./resources/i18n",
     "download-ls": "node ./scripts/download-ls.js",
     "download-examples": "node ./scripts/download-examples.js",
     "generate-protocol": "node ./scripts/generate-protocol.js",
@@ -169,17 +169,17 @@
     }
   ],
   "arduino": {
-    "cli": {
+    "arduino-cli": {
       "version": "0.33.1"
     },
-    "fwuploader": {
+    "arduino-fwuploader": {
       "version": "2.2.2"
+    },
+    "arduino-language-server": {
+      "version": "0.7.4"
     },
     "clangd": {
       "version": "14.0.0"
-    },
-    "languageServer": {
-      "version": "0.7.4"
     }
   }
 }

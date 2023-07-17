@@ -4,6 +4,8 @@ import {
 } from '@theia/core/lib/node/i18n/localization-contribution';
 import { injectable } from '@theia/core/shared/inversify';
 import { join } from 'node:path';
+import fs from 'node:fs/promises';
+import { i18nExtensionsPath } from '../resources';
 
 @injectable()
 export class ArduinoLocalizationContribution
@@ -35,13 +37,13 @@ export class ArduinoLocalizationContribution
 
   async registerLocalizations(registry: LocalizationRegistry): Promise<void> {
     for (const [locale, jsonFilename] of this.locales) {
-      registry.registerLocalizationFromRequire(
-        locale,
-        require(join(
-          __dirname,
-          `../../../build/i18n/${jsonFilename ?? locale}.json`
-        ))
+      const languageVsixPath = join(
+        i18nExtensionsPath,
+        `${jsonFilename ?? locale}.json`
       );
+      const raw = await fs.readFile(languageVsixPath, { encoding: 'utf8' });
+      const json = JSON.stringify(raw);
+      registry.registerLocalizationFromRequire(locale, json);
     }
   }
 }

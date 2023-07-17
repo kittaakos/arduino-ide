@@ -15,5 +15,12 @@ if (!environment.electron.isDevMode()) {
   ]
     .filter(Boolean)
     .join(',');
+  // `resources` folder after webpack:node.
+  process.env.IDE2_RESOURCES = path.join(
+    __dirname,
+    'lib',
+    'backend',
+    'resources'
+  );
 }
 require('./lib/backend/electron-main.js');
