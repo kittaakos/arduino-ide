@@ -67,7 +67,7 @@ function containersDeepEquals(
 ) {
   const stableActual = JSON.parse(stableJsonStringify(actual));
   const stableExpected = JSON.parse(stableJsonStringify(expected));
-  assert.deepStrictEqual(stableActual, stableExpected);
+  assert.deepStrictEqual(stableActual, stableExpected); // TODO: get rid of `fast-json-stable-stringify`
 }
 
 /**

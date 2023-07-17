@@ -22,7 +22,8 @@ if (process.env.NODE_ENV === 'production') {
   console.info(
     "Detected NODE_ENV=production. Overriding 'mode' with 'production'"
   );
-  configs.forEach((config) => (config.mode = 'production'));
+  frontend.forEach((config) => (config.mode = 'production'));
+  backend.config.optimization.minimize = true;
 }
 
 // Taken from https://github.com/eclipse-theia/theia-blueprint/blob/022878d5488c47650fb17b5fdf49a28be88465fe/applications/electron/webpack.config.js#L18-L21
@@ -57,6 +58,9 @@ backend.config.plugins.push(
       {
         from: path.join(arduinoIdeExtensionPackageJson, '..', 'resources'),
         to: path.resolve(__dirname, 'lib', 'backend', 'resources'),
+        globOptions: {
+          ignore: ['**/i18n/**'],
+        },
       },
       {
         from: path.join(arduinoSerialPlotterWebAppPackageJson, '..', 'build'),
@@ -70,6 +74,11 @@ backend.config.plugins.push(
       },
     ],
   })
+);
+// rewire the customized electron-main
+backend.config.entry['electron-main'] = path.join(
+  __dirname,
+  'arduino-ide-electron-main.js'
 );
 
 module.exports = [...frontend, backend.config];

@@ -83,7 +83,7 @@ import {
 } from '../common/protocol/authentication-service';
 import { ArduinoFirmwareUploaderImpl } from './arduino-firmware-uploader-impl';
 import { PlotterBackendContribution } from './plotter/plotter-backend-contribution';
-import { ArduinoLocalizationContribution } from './i18n/arduino-localization-contribution';
+import { ArduinoLocalizationContribution } from './arduino-localization-contribution';
 import { LocalizationContribution } from '@theia/core/lib/node/i18n/localization-contribution';
 import { MonitorManagerProxyImpl } from './monitor-manager-proxy-impl';
 import { MonitorManager, MonitorManagerName } from './monitor-manager';

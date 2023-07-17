@@ -19,9 +19,6 @@ export const arduinoLanguageServerPath = path.join(
 export const clangdPath = path.join(resourcesPath, 'clangd' + exe);
 export const clangFormatPath = path.join(resourcesPath, 'clang-format' + exe);
 
-// Internationalization
-export const i18nExtensionsPath = path.join(resourcesPath, 'i18n');
-
 // Plotter
 export const arduinoPlotterWebAppPath = path.join(
   resourcesPath,
