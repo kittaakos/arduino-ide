@@ -4,7 +4,7 @@ import {
   postConstruct,
 } from '@theia/core/shared/inversify';
 import { join } from 'node:path';
-import * as fs from 'node:fs';
+import fs from 'node:fs';
 import { FileUri } from '@theia/core/lib/node/file-uri';
 import {
   SketchRef,
