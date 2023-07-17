@@ -24,4 +24,4 @@ if (config.buildDate) {
     'resources'
   );
 }
-require('./lib/backend/electron-main.js');
+require('./lib/backend/electron-main');
