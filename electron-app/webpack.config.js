@@ -77,17 +77,13 @@ backend.config.plugins.push(
       },
     ],
   }),
+  // restore file permissions after webpack copy
   new PermissionsOutputPlugin({
-    buildFiles: [
+    buildFolders: [
       {
-        path: path.join(
-          __dirname,
-          'lib',
-          'backend',
-          'resources',
-          'arduino-cli'
-        ),
-        fileMode: '777',
+        path: path.join(__dirname, 'lib', 'backend', 'resources'),
+        fileMode: '755',
+        dirMode: '644',
       },
     ],
   })

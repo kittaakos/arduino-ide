@@ -28,7 +28,7 @@ const version = '1.10.0';
     shell
   );
 
-  const destination = path.join(__dirname, '..', 'Examples');
+  const destination = path.join(__dirname, '..', 'resources', 'Examples');
   shell.mkdir('-p', destination);
   shell.cp('-fR', path.join(repository, 'examples', '*'), destination);
 
