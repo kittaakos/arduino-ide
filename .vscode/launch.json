@@ -4,7 +4,7 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "App (Electron) [Dev]",
+      "name": "App [Dev]",
       "runtimeExecutable": "${workspaceRoot}/node_modules/.bin/electron",
       "windows": {
         "runtimeExecutable": "${workspaceRoot}/node_modules/.bin/electron.cmd",
@@ -41,7 +41,7 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "App (Electron)",
+      "name": "App",
       "runtimeExecutable": "${workspaceRoot}/node_modules/.bin/electron",
       "windows": {
         "runtimeExecutable": "${workspaceRoot}/node_modules/.bin/electron.cmd",
