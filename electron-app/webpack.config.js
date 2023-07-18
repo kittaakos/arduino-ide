@@ -1,8 +1,8 @@
+const chmodr = require('chmodr');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const path = require('node:path');
 const resolvePackagePath = require('resolve-package-path');
 const webpack = require('webpack');
-const PermissionsOutputPlugin = require('webpack-permissions-plugin');
 const frontend = require('./gen-webpack.config');
 const backend = require('./gen-webpack.node.config');
 
@@ -27,30 +27,38 @@ if (process.platform !== 'win32') {
   );
 }
 
-const arduinoIdeExtensionPackageJson = resolvePackagePath(
-  'arduino-ide-extension',
-  __dirname
-);
-if (!arduinoIdeExtensionPackageJson) {
-  throw new Error("Could not resolve the 'arduino-ide-extension' package.");
+// restore file permissions after webpack copy
+// https://github.com/webpack-contrib/copy-webpack-plugin/issues/35#issuecomment-1407280257
+class PermissionsPlugin {
+  /**
+   *
+   * @param {import('webpack').Compiler} compiler
+   */
+  apply(compiler) {
+    compiler.hooks.afterEmit.tap('PermissionsPlugin', () => {
+      return new Promise((resolve, reject) => {
+        chmodr(
+          path.join(__dirname, 'lib', 'backend', 'resources'),
+          0o755,
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+    });
+  }
 }
 
-const arduinoSerialPlotterWebAppPackageJson = resolvePackagePath(
-  'arduino-serial-plotter-webapp',
-  __dirname
-);
-if (!arduinoSerialPlotterWebAppPackageJson) {
-  throw new Error(
-    "Could not resolve the 'arduino-serial-plotter-webapp' package."
-  );
-}
 // Copy all the IDE2 binaries and the plotter web app.
-backend.config.plugins.push(
+// XXX: For whatever reason it is important to use `unshift` instead of `push`, and execute the additional webpack plugins before the Theia contributed ones kick in. Otherwise ours do not work.
+backend.config.plugins.unshift(
   new CopyWebpackPlugin({
     patterns: [
       // binaries
       {
-        from: path.join(arduinoIdeExtensionPackageJson, '..', 'resources'),
+        from: path.join(
+          resolvePackagePath('arduino-ide-extension', __dirname),
+          '..',
+          'resources'
+        ),
         to: path.resolve(__dirname, 'lib', 'backend', 'resources'),
         globOptions: {
           ignore: ['**/i18n/**'],
@@ -58,7 +66,11 @@ backend.config.plugins.push(
       },
       // plotter app
       {
-        from: path.join(arduinoSerialPlotterWebAppPackageJson, '..', 'build'),
+        from: path.join(
+          resolvePackagePath('arduino-serial-plotter-webapp', __dirname),
+          '..',
+          'build'
+        ),
         to: path.resolve(
           __dirname,
           'lib',
@@ -69,16 +81,7 @@ backend.config.plugins.push(
       },
     ],
   }),
-  // restore file permissions after webpack copy
-  new PermissionsOutputPlugin({
-    buildFolders: [
-      {
-        path: path.join(__dirname, 'lib', 'backend', 'resources'),
-        fileMode: '755',
-        dirMode: '644',
-      },
-    ],
-  })
+  new PermissionsPlugin()
 );
 
 // Override the default entry from Theia as IDE2 has a customization of the module.

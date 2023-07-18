@@ -26,6 +26,7 @@
   "devDependencies": {
     "@theia/cli": "1.39.0",
     "7zip-min": "^1.4.4",
+    "chmodr": "^1.2.0",
     "copy-webpack-plugin": "^8.1.1",
     "dateformat": "^5.0.3",
     "electron": "^23.2.4",
@@ -37,11 +38,11 @@
     "resolve-package-path": "^4.0.3",
     "rimraf": "^2.6.1",
     "semver": "^7.3.2",
-    "temp": "^0.9.1",
-    "webpack-permissions-plugin": "^1.0.9"
+    "temp": "^0.9.1"
   },
   "scripts": {
     "prepare": "theia download:plugins",
+    "prebuild": "rimraf lib",
     "build": "theia build",
     "start": "theia start --plugins=local-dir:../plugins",
     "watch": "theia build --watch --mode development",

@@ -2,7 +2,7 @@
 
 const transifex = require('./transifex');
 const util = require('util');
-const fetch = require('node-fetch');
+const { default: fetch } = require('node-fetch');
 const download = require('download');
 
 const getLanguages = async (organization, project) => {
@@ -59,6 +59,7 @@ const getTranslationDownloadStatus = async (language, downloadRequestId) => {
         const url = transifex.url(
             util.format('resource_translations_async_downloads/%s', downloadRequestId)
         );
+        /** @type {import('node-fetch').RequestInit} */
         const options = {
             headers: transifex.authHeader(),
             redirect: 'manual'
@@ -98,7 +99,7 @@ const getTranslationDownloadStatus = async (language, downloadRequestId) => {
     const { organization, project, resource } = await transifex.credentials();
     const translationsDirectory = process.argv[2];
     if (!translationsDirectory) {
-        console.info('Translations directory not specified')
+        console.error('Translations directory not specified')
         process.exit(1);
     }
 

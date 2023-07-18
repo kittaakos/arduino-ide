@@ -5,11 +5,19 @@ const version = '1.10.0';
 
 (async () => {
   const os = require('node:os');
-  const { promises: fs } = require('node:fs');
+  const { existsSync, promises: fs } = require('node:fs');
   const path = require('node:path');
   const shell = require('shelljs');
   const { v4 } = require('uuid');
   const { exec } = require('./utils');
+
+  const destination = path.join(__dirname, '..', 'resources', 'Examples');
+  if (existsSync(destination)) {
+    shell.echo(
+      `Skipping Git checkout of the examples because the repository already exists: ${destination}`
+    );
+    return;
+  }
 
   const repository = path.join(os.tmpdir(), `${v4()}-arduino-examples`);
   if (shell.mkdir('-p', repository).code !== 0) {
@@ -28,7 +36,6 @@ const version = '1.10.0';
     shell
   );
 
-  const destination = path.join(__dirname, '..', 'resources', 'Examples');
   shell.mkdir('-p', destination);
   shell.cp('-fR', path.join(repository, 'examples', '*'), destination);
 
