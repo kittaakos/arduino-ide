@@ -34,20 +34,24 @@
     "electron-notarize": "^1.1.1",
     "execa": "^7.1.1",
     "file-type": "^18.5.0",
+    "glob": "^10.3.3",
     "is-ci": "^2.0.0",
     "resolve-package-path": "^4.0.3",
     "rimraf": "^2.6.1",
     "semver": "^7.3.2",
-    "temp": "^0.9.1"
+    "temp": "^0.9.1",
+    "yaml": "^1.10.2"
   },
   "scripts": {
     "prepare": "theia download:plugins",
     "prebuild": "rimraf lib",
     "build": "theia build",
+    "test": "mocha \"./scripts/**/*.test.js\"",
     "start": "theia start --plugins=local-dir:../plugins",
     "watch": "theia build --watch --mode development",
     "prepackage": "rimraf dist",
     "package": "node ./scripts/package.js",
+    "postpackage": "node ./scripts/post-package.js",
     "rebuild": "theia rebuild:browser && theia rebuild:electron"
   },
   "theia": {
@@ -208,5 +212,11 @@
     "vscode-language-pack-tr": "https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-tr/1.70.0/file/MS-CEINTL.vscode-language-pack-tr-1.70.0.vsix",
     "vscode-language-pack-uk": "https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-uk/1.48.3/file/MS-CEINTL.vscode-language-pack-uk-1.48.3.vsix",
     "vscode-language-pack-zh-hans": "https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-zh-hans/1.70.0/file/MS-CEINTL.vscode-language-pack-zh-hans-1.70.0.vsix"
+  },
+  "mocha": {
+    "reporter": "spec",
+    "colors": true,
+    "watch-extensions": "js",
+    "timeout": 10000
   }
 }

@@ -141,7 +141,7 @@ jobs:
 
           yarn --cwd ./arduino-ide-extension build
           yarn --cwd ./arduino-ide-extension lint
-          yarn --cwd ./arduino-ide-extension test
+          yarn test
           yarn --cwd ./arduino-ide-extension test:slow
 
           yarn --cwd ./electron-app rebuild

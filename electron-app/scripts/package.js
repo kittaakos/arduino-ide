@@ -2,6 +2,7 @@
 'use strict';
 
 const semver = require('semver');
+const { isNightly, isRelease } = require('./utils');
 
 async function run() {
   /** @type {string} */
@@ -132,34 +133,6 @@ async function timestamp() {
 
 async function currentCommitish() {
   return exec('git', ['rev-parse', '--short', 'HEAD']);
-}
-
-const isElectronPublish = false; // TODO: support auto-updates
-const isNightly = process.env.IS_NIGHTLY === 'true';
-const isRelease = process.env.IS_RELEASE === 'true';
-
-// getChannelFile returns the name of the channel file to be released
-// together with the IDE file.
-// The channel file depends on the platform and whether we're creating
-// a nightly build or a full release.
-// In all other cases, like when building a tester build for a PR,
-// an empty string is returned since we don't need a channel file.
-// The channel files are necessary for updates check with electron-updater
-// to work correctly.
-// For more information: https://www.electron.build/auto-update
-function getChannelFile(platform) {
-  let currentChannel = 'beta';
-  if (isRelease) {
-    currentChannel = 'latest';
-  }
-  return (
-    currentChannel +
-    {
-      linux: '-linux.yml',
-      win32: '.yml',
-      darwin: '-mac.yml',
-    }[platform]
-  );
 }
 
 /**

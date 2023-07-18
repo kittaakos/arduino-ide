@@ -1,122 +1,191 @@
 // @ts-check
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const zip = require('7zip-min');
-const temp = require('temp');
+const isCI = require('is-ci');
+const fs = require('fs');
+const path = require('path');
+const glob = require('glob');
+const { isRelease } = require('./utils');
+const { isZip, adjustArchiveStructure } = require('./archive');
+const rimraf = require('rimraf');
+const { promisify } = require('util');
 
-/**
- * `pathToZip` is a `path/to/your/app-name.zip`.
- * If the `pathToZip` archive does not have a root directory with name `app-name`, it creates one, and move the content from the
- * archive's root to the new root folder. If the archive already has the desired root folder, calling this function is a NOOP.
- * If `pathToZip` is not a ZIP, rejects. `targetFolderName` is the destination folder not the new archive location.
- */
-function run(pathToZip, targetFolderName, noCleanup) {
-  return new Promise(async (resolve, reject) => {
-    if (!(await isZip(pathToZip))) {
-      reject(new Error(`Expected a ZIP file.`));
-      return;
-    }
-    if (!fs.existsSync(targetFolderName)) {
-      reject(new Error(`${targetFolderName} does not exist.`));
-      return;
-    }
-    if (!fs.lstatSync(targetFolderName).isDirectory()) {
-      reject(new Error(`${targetFolderName} is not a directory.`));
-      return;
-    }
-    console.log(`⏱️  >>> Adjusting ZIP structure ${pathToZip}...`);
-
-    const root = basename(pathToZip);
-    const resources = await list(pathToZip);
-    const hasBaseFolder = resources.find((name) => name === root);
-    if (hasBaseFolder) {
-      if (
-        resources.filter((name) => name.indexOf(path.sep) === -1).length > 1
-      ) {
-        console.warn(
-          `${pathToZip} ZIP has the desired root folder ${root}, however the ZIP contains other entries too: ${JSON.stringify(
-            resources
-          )}`
-        );
-      }
-      console.log(`👌  <<< The ZIP already has the desired ${root} folder.`);
-      resolve(pathToZip);
-      return;
-    }
-
-    const track = temp.track();
-    try {
-      const unzipOut = path.join(track.mkdirSync(), root);
-      fs.mkdirSync(unzipOut);
-      await unpack(pathToZip, unzipOut);
-      const adjustedZip = path.join(targetFolderName, path.basename(pathToZip));
-      await pack(unzipOut, adjustedZip);
-      console.log(
-        `👌  <<< Adjusted the ZIP structure. Moved the modified ${basename(
-          pathToZip
-        )} to the ${targetFolderName} folder.`
-      );
-      resolve(adjustedZip);
-    } finally {
-      if (!noCleanup) {
-        track.cleanupSync();
-      }
-    }
-  });
-}
-
-/**
- * Returns the `basename` of `pathToFile` without the file extension.
- */
-function basename(pathToFile) {
-  const name = path.basename(pathToFile);
-  const ext = path.extname(pathToFile);
-  return name.substr(0, name.length - ext.length);
-}
-
-function unpack(what, where) {
-  return new Promise((resolve, reject) => {
-    zip.unpack(what, where, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(undefined);
-    });
-  });
-}
-
-function pack(what, where) {
-  return new Promise((resolve, reject) => {
-    zip.pack(what, where, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(undefined);
-    });
-  });
-}
-
-function list(what) {
-  return new Promise((resolve, reject) => {
-    zip.list(what, (error, result) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(result.map(({ name }) => name));
-    });
-  });
-}
-
-async function isZip(pathToFile) {
-  if (!fs.existsSync(pathToFile)) {
-    throw new Error(`${pathToFile} does not exist`);
+async function run() {
+  if (isCI) {
+    console.log(`🚢 Detected CI, recalculating artifacts hash...`);
+    await recalculateArtifactsHash();
+    console.log(`🚢 Detected CI, moving build artifacts...`);
+    await copyFilesToBuildArtifacts();
+    console.log('👌 Done.');
   }
-  const fileType = await import('file-type');
-  const type = await fileType.fileTypeFromFile(pathToFile);
-  return type && type.ext === 'zip';
 }
+
+async function recalculateArtifactsHash() {
+  const { platform } = process;
+  const cwd = path.join(__dirname, '..', 'dist');
+  const channelFilePath = path.join(cwd, getChannelFile(platform));
+  const yaml = require('yaml');
+
+  try {
+    let fileContents = fs.readFileSync(channelFilePath, 'utf8');
+    const newChannelFile = yaml.parse(fileContents);
+    const { files, path } = newChannelFile;
+    const newSha512 = await hashFile(path.join(cwd, path));
+    newChannelFile.sha512 = newSha512;
+    if (!!files) {
+      const newFiles = [];
+      for (let file of files) {
+        const { url } = file;
+        const { size } = fs.statSync(path.join(cwd, url));
+        const newSha512 = await hashFile(path.join(cwd, url));
+
+        if (!newFiles.find((f) => f.sha512 === newSha512)) {
+          newFiles.push({ ...file, sha512: newSha512, size });
+        }
+      }
+      newChannelFile.files = newFiles;
+    }
+
+    const newChannelFileRaw = yaml.stringify(newChannelFile);
+    fs.writeFileSync(channelFilePath, newChannelFileRaw);
+    console.log(`👌  >>> Channel file updated successfully. New channel file:`);
+    console.log(newChannelFileRaw);
+  } catch (e) {
+    console.log(e);
+  }
+}
+
+/**
+ * @param {import('node:fs').PathLike} file
+ * @param {string|undefined} [algorithm="sha512"]
+ * @param {BufferEncoding|undefined} [encoding="base64"]
+ * @param {object|undefined} [options]
+ */
+function hashFile(file, algorithm = 'sha512', encoding = 'base64', options) {
+  const crypto = require('node:crypto');
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash(algorithm);
+    hash.on('error', reject).setEncoding(encoding);
+    fs.createReadStream(
+      file,
+      Object.assign({}, options, {
+        highWaterMark: 1024 * 1024,
+        /* better to use more memory but hash faster */
+      })
+    )
+      .on('error', reject)
+      .on('end', () => {
+        hash.end();
+        resolve(hash.read());
+      })
+      .pipe(hash, {
+        end: false,
+      });
+  });
+}
+
+// getChannelFile returns the name of the channel file to be released
+// together with the IDE file.
+// The channel file depends on the platform and whether we're creating
+// a nightly build or a full release.
+// In all other cases, like when building a tester build for a PR,
+// an empty string is returned since we don't need a channel file.
+// The channel files are necessary for updates check with electron-updater
+// to work correctly.
+// For more information: https://www.electron.build/auto-update
+function getChannelFile(platform) {
+  let currentChannel = 'beta';
+  if (isRelease) {
+    currentChannel = 'latest';
+  }
+  return (
+    currentChannel +
+    {
+      linux: '-linux.yml',
+      win32: '.yml',
+      darwin: '-mac.yml',
+    }[platform]
+  );
+}
+
+async function copyFilesToBuildArtifacts() {
+  const { platform } = process;
+  const cwd = path.join(__dirname, '..', 'dist');
+  const targetFolder = path.join(cwd, 'build-artifacts');
+  await require('fs/promises').mkdir(targetFolder, { recursive: true });
+  const filesToCopy = [];
+  const channelFile = getChannelFile(platform);
+  // Channel file might be an empty string if we're not building a
+  // nightly or a full release. This can happen when building a package
+  // locally or a tester build when creating a new PR on GH.
+  if (!!channelFile && fs.existsSync(path.join(cwd, channelFile))) {
+    const channelFilePath = path.join(cwd, channelFile);
+    const newChannelFilePath = channelFilePath
+      ?.replace('latest', 'stable')
+      ?.replace('beta', 'nightly');
+    console.log(
+      `🔨  >>> Renaming ${channelFilePath} to ${newChannelFilePath}.`
+    );
+    cpf(channelFilePath, newChannelFilePath);
+    filesToCopy.push(newChannelFilePath);
+  }
+  switch (platform) {
+    case 'linux': {
+      filesToCopy.push(
+        ...glob
+          .sync('**/arduino-ide*.{zip,AppImage}', { cwd })
+          .map((p) => path.join(cwd, p))
+      );
+      break;
+    }
+    case 'win32': {
+      filesToCopy.push(
+        ...glob
+          .sync('**/arduino-ide*.{exe,msi,zip}', { cwd })
+          .map((p) => path.join(cwd, p))
+      );
+      break;
+    }
+    case 'darwin': {
+      filesToCopy.push(
+        ...glob
+          .sync('**/arduino-ide*.{dmg,zip}', { cwd })
+          .map((p) => path.join(cwd, p))
+      );
+      break;
+    }
+    default: {
+      console.error(`Unsupported platform: ${platform}.`);
+      process.exit(1);
+    }
+  }
+  if (!filesToCopy.length) {
+    console.error(`Could not collect any build artifacts from ${cwd}.`);
+    process.exit(1);
+  }
+  for (const fileToCopy of filesToCopy) {
+    console.log(`🚢  >>> Copying ${fileToCopy} to ${targetFolder}.`);
+    if (platform === 'linux' && (await isZip(fileToCopy))) {
+      await adjustArchiveStructure(fileToCopy, targetFolder);
+    } else {
+      cpf(fileToCopy, targetFolder);
+    }
+    console.log(`👌  >>> Copied ${fileToCopy} to ${targetFolder}.`);
+  }
+}
+
+/**
+ * `cp -f`: copies a file into a target folder. Always overrides.
+ * @param {string} sourceFilePath absolute path to file you want to copy
+ * @param {string} targetDirPath target folder where you want to copy
+ */
+async function cpf(sourceFilePath, targetDirPath) {
+  const fs = require('fs/promises');
+  const filename = path.basename(sourceFilePath);
+  const rimrafAsync = promisify(rimraf);
+  const targetPath = path.join(targetDirPath, filename);
+  await rimrafAsync(targetPath);
+  await fs.copyFile(sourceFilePath, targetPath);
+}
+
+run();
