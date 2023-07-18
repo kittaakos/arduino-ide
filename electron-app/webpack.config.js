@@ -57,6 +57,8 @@ backend.config.plugins.unshift(
         from: path.join(
           resolvePackagePath('arduino-ide-extension', __dirname),
           '..',
+          'src',
+          'node',
           'resources'
         ),
         to: path.resolve(__dirname, 'lib', 'backend', 'resources'),

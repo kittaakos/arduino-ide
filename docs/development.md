@@ -109,7 +109,7 @@ This project is built on [GitHub Actions](https://github.com/arduino/arduino-ide
 * *I have understood that not all versions of the CLI are compatible with my version of IDE but how can I manually update the `arduino-cli` inside the IDE?*
 
     [Get](https://arduino.github.io/arduino-cli/installation) the desired version of `arduino-cli` for your platform and manually replace the one inside the IDE. The CLI can be found inside the IDE at:
-    - Windows: `C:\path\to\Arduino IDE\resources\app\node_modules\arduino-ide-extension\build\arduino-cli.exe`,
-    - macOS: `/path/to/Arduino IDE.app/Contents/Resources/app/node_modules/arduino-ide-extension/build/arduino-cli`, and
-    - Linux: `/path/to/Arduino IDE/resources/app/node_modules/arduino-ide-extension/build/arduino-cli`.
+    - Windows: `C:\path\to\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe`,
+    - macOS: `/path/to/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli`, and
+    - Linux: `/path/to/Arduino IDE/resources/app/lib/backend/resources/arduino-cli`.
 

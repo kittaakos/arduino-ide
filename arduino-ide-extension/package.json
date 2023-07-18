@@ -9,7 +9,7 @@
     "compose-changelog": "node ./scripts/compose-changelog.js",
     "download-cli": "node ./scripts/download-cli.js",
     "download-fwuploader": "node ./scripts/download-fwuploader.js",
-    "copy-i18n": "ncp ../i18n ./src/node/i18n",
+    "copy-i18n": "ncp ../i18n ./src/node/resources/i18n",
     "download-ls": "node ./scripts/download-ls.js",
     "download-examples": "node ./scripts/download-examples.js",
     "generate-protocol": "node ./scripts/generate-protocol.js",
