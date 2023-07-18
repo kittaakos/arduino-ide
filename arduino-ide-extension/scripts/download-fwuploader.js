@@ -35,7 +35,13 @@
   }
 
   const { platform, arch } = process;
-  const resourcesFolder = path.join(__dirname, '..', 'resources');
+  const resourcesFolder = path.join(
+    __dirname,
+    '..',
+    'src',
+    'node',
+    'resources'
+  );
   const fwuploderName = `arduino-fwuploader${
     platform === 'win32' ? '.exe' : ''
   }`;

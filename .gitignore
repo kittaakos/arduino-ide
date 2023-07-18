@@ -3,7 +3,6 @@ lib/
 downloads/
 resources/
 arduino-ide-extension/Examples/
-arduino-ide-extension/src/node/i18n
 src-gen/
 gen-webpack.config.js
 gen-webpack.node.config.js

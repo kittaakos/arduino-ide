@@ -3,22 +3,22 @@ import {
   LocalizationRegistry,
 } from '@theia/core/lib/node/i18n/localization-contribution';
 import { injectable } from '@theia/core/shared/inversify';
-import bgJson from './i18n/bg.json';
-import csJson from './i18n/cs.json';
-import deJson from './i18n/de.json';
-import esJson from './i18n/es.json';
-import frJson from './i18n/fr.json';
-import huJson from './i18n/hu.json';
-import itJson from './i18n/it.json';
-import jaJson from './i18n/ja.json';
-import koJson from './i18n/ko.json';
-import nlJson from './i18n/nl.json';
-import plJson from './i18n/pl.json';
-import ptJson from './i18n/pt.json';
-import ruJson from './i18n/ru.json';
-import trJson from './i18n/tr.json';
-import uk_UAJson from './i18n/uk_UA.json';
-import zhJson from './i18n/zh.json';
+import bgJson from '../resources/i18n/bg.json';
+import csJson from '../resources/i18n/cs.json';
+import deJson from '../resources/i18n/de.json';
+import esJson from '../resources/i18n/es.json';
+import frJson from '../resources/i18n/fr.json';
+import huJson from '../resources/i18n/hu.json';
+import itJson from '../resources/i18n/it.json';
+import jaJson from '../resources/i18n/ja.json';
+import koJson from '../resources/i18n/ko.json';
+import nlJson from '../resources/i18n/nl.json';
+import plJson from '../resources/i18n/pl.json';
+import ptJson from '../resources/i18n/pt.json';
+import ruJson from '../resources/i18n/ru.json';
+import trJson from '../resources/i18n/tr.json';
+import uk_UAJson from '../resources/i18n/uk_UA.json';
+import zhJson from '../resources/i18n/zh.json';
 
 @injectable()
 export class ArduinoLocalizationContribution

@@ -34,7 +34,13 @@
   }
 
   const { platform, arch } = process;
-  const resourcesFolder = path.join(__dirname, '..', 'resources');
+  const resourcesFolder = path.join(
+    __dirname,
+    '..',
+    'src',
+    'node',
+    'resources'
+  );
   const cliName = `arduino-cli${platform === 'win32' ? '.exe' : ''}`;
   const destinationPath = path.join(resourcesFolder, cliName);
 

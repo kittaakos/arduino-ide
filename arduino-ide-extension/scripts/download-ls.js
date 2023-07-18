@@ -63,7 +63,13 @@
   const force = yargs['force-download'];
   const { platform, arch } = process;
   const platformArch = platform + '-' + arch;
-  const resourcesFolder = path.join(__dirname, '..', 'resources');
+  const resourcesFolder = path.join(
+    __dirname,
+    '..',
+    'src',
+    'node',
+    'resources'
+  );
   const lsExecutablePath = path.join(
     resourcesFolder,
     `arduino-language-server${platform === 'win32' ? '.exe' : ''}`

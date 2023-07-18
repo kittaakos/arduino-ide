@@ -65,7 +65,13 @@
   shell.echo(`<<< Repository cloned.`);
 
   const { platform } = process;
-  const resourcesFolder = path.join(__dirname, '..', 'resources');
+  const resourcesFolder = path.join(
+    __dirname,
+    '..',
+    'src',
+    'node',
+    'resources'
+  );
   const cli = path.join(
     resourcesFolder,
     `arduino-cli${platform === 'win32' ? '.exe' : ''}`

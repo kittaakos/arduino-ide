@@ -11,7 +11,14 @@ const version = '1.10.0';
   const { v4 } = require('uuid');
   const { exec } = require('./utils');
 
-  const destination = path.join(__dirname, '..', 'resources', 'Examples');
+  const destination = path.join(
+    __dirname,
+    '..',
+    'src',
+    'node',
+    'resources',
+    'Examples'
+  );
   if (existsSync(destination)) {
     shell.echo(
       `Skipping Git checkout of the examples because the repository already exists: ${destination}`
