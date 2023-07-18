@@ -18,9 +18,8 @@
     "build": "tsc",
     "postbuild": "ncp ./src/node/cli-protocol/ ./lib/node/cli-protocol/",
     "watch": "tsc -w",
-    "test": "mocha \"./lib/test/**/*.test.js\"",
-    "test:slow": "mocha \"./lib/test/**/*.slow-test.js\" --slow 5000",
-    "test:watch": "mocha --watch --watch-files lib \"./lib/test/**/*.test.js\""
+    "test": "cross-env IDE2_TEST=true mocha \"./lib/test/**/*.test.js\"",
+    "test:slow": "cross-env IDE2_TEST=true mocha \"./lib/test/**/*.slow-test.js\" --slow 5000"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.8.14",
@@ -112,6 +111,7 @@
     "@types/mocha": "^5.2.7",
     "@types/react-window": "^1.8.5",
     "chai": "^4.2.0",
+    "cross-env": "^7.0.3",
     "decompress": "^4.2.0",
     "decompress-tarbz2": "^4.1.1",
     "decompress-targz": "^4.1.1",

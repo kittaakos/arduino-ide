@@ -1,6 +1,12 @@
 import path from 'node:path';
 
-const resourcesPath = path.join(__dirname, 'resources'); // the path seems incorrect but after webpack, the resources path will be correct.
+// When running the tests, the JS files are not yet bundled by webpack.
+// Hence, the `resources` folder lookup is different.
+const testEnv = process.env.IDE2_TEST === 'true';
+const resourcesPath = path.join(
+  __dirname,
+  ...(testEnv ? ['..', '..', 'src', 'node', 'resources'] : ['resources'])
+);
 const exe = process.platform === 'win32' ? '.exe' : '';
 
 // binaries
