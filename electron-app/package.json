@@ -42,7 +42,7 @@
   },
   "scripts": {
     "prepare": "theia download:plugins",
-    "build": "theia build --mode development",
+    "build": "theia build",
     "start": "theia start --plugins=local-dir:../plugins",
     "watch": "theia build --watch --mode development",
     "prepackage": "rimraf dist",

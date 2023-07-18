@@ -135,6 +135,7 @@ jobs:
           if [ "${{ runner.OS }}" = "Windows" ]; then
             npm config set msvs_version 2017 --global
           fi
+
           npx node-gyp install
           yarn
 
@@ -143,7 +144,6 @@ jobs:
           yarn --cwd ./arduino-ide-extension test
           yarn --cwd ./arduino-ide-extension test:slow
 
-          export NODE_ENV=production
           yarn --cwd ./electron-app rebuild
           yarn --cwd ./electron-app build
           yarn --cwd ./electron-app package

@@ -19,14 +19,6 @@ mainWindowConfig.plugins?.push(
   })
 );
 
-if (process.env.NODE_ENV === 'production') {
-  console.info(
-    "Detected NODE_ENV=production. Overriding 'mode' with 'production' and minimizing code."
-  );
-  frontend.forEach((config) => (config.mode = 'production'));
-  backend.config.optimization.minimize = true;
-}
-
 // Taken from https://github.com/eclipse-theia/theia-blueprint/blob/022878d5488c47650fb17b5fdf49a28be88465fe/applications/electron/webpack.config.js#L18-L21
 if (process.platform !== 'win32') {
   // For some reason, blueprint wants to bundle the `.node` files directly without going through `@vscode/windows-ca-certs`
@@ -88,5 +80,15 @@ backend.config.plugins.push(
     ],
   })
 );
+
+// Override the default entry from Theia as IDE2 has a customization of the module.
+backend.config.entry['nsfw-watcher'] = {
+  import: require.resolve(
+    'arduino-ide-extension/lib/node/theia/filesystem/nsfw-watcher'
+  ),
+  library: {
+    type: 'commonjs2',
+  },
+};
 
 module.exports = [...frontend, backend.config];
