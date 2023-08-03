@@ -490,23 +490,11 @@ export class BoardsServiceProvider
     await Promise.all([
       this.setData(
         selectedBoardStorageKey,
-        selectedBoard
-          ? // to make sure no other properties of the board object are persisted
-            JSON.stringify({
-              name: selectedBoard.name,
-              fqbn: selectedBoard.fqbn,
-            })
-          : undefined
+        selectedBoard ? JSON.stringify(selectedBoard) : undefined
       ),
       this.setData(
         selectedPortStorageKey,
-        selectedPort
-          ? // to make sure no other properties are persisted from the port object
-            JSON.stringify({
-              protocol: selectedPort.protocol,
-              address: selectedPort.address,
-            })
-          : undefined
+        selectedPort ? JSON.stringify(selectedPort) : undefined
       ),
       this.setData(
         boardListHistoryStorageKey,
