@@ -128,7 +128,7 @@ export class SketchesServiceImpl
     uri: string,
     detectInvalidSketchNameError = true
   ): Promise<SketchWithDetails> {
-    const { client } = await this.coreClient;
+    const client = await this.coreServiceClient;
     const req = new LoadSketchRequest();
     const requestSketchPath = FileUri.fsPath(uri);
     req.setSketchPath(requestSketchPath);

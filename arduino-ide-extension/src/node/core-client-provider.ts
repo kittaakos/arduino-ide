@@ -1,13 +1,29 @@
-import { join } from 'node:path';
 import * as grpc from '@grpc/grpc-js';
+import {
+  Disposable,
+  DisposableCollection,
+} from '@theia/core/lib/common/disposable';
+import { Emitter } from '@theia/core/lib/common/event';
+import { Deferred } from '@theia/core/lib/common/promise-util';
 import {
   inject,
   injectable,
   postConstruct,
 } from '@theia/core/shared/inversify';
-import { Emitter } from '@theia/core/lib/common/event';
+import { join } from 'node:path';
+import {
+  AdditionalUrls,
+  IndexType,
+  IndexUpdateDidCompleteParams,
+  IndexUpdateDidFailParams,
+  IndexUpdateSummary,
+  IndexUpdateWillStartParams,
+  NotificationServiceServer,
+} from '../common/protocol';
+import { ArduinoDaemonImpl } from './arduino-daemon-impl';
+import type { DefaultCliConfig } from './cli-config';
+import * as commandsGrpcPb from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
 import { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
-import { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
 import {
   CreateRequest,
   InitRequest,
@@ -17,31 +33,17 @@ import {
   UpdateLibrariesIndexRequest,
   UpdateLibrariesIndexResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/commands_pb';
-import * as commandsGrpcPb from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
-import {
-  IndexType,
-  IndexUpdateDidCompleteParams,
-  IndexUpdateSummary,
-  IndexUpdateDidFailParams,
-  IndexUpdateWillStartParams,
-  NotificationServiceServer,
-  AdditionalUrls,
-} from '../common/protocol';
-import { Deferred } from '@theia/core/lib/common/promise-util';
+import { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
 import {
   Status as RpcStatus,
   Status,
 } from './cli-protocol/google/rpc/status_pb';
 import { ConfigServiceImpl } from './config-service-impl';
-import { ArduinoDaemonImpl } from './arduino-daemon-impl';
-import { DisposableCollection } from '@theia/core/lib/common/disposable';
-import { Disposable } from '@theia/core/shared/vscode-languageserver-protocol';
 import {
-  IndexesUpdateProgressHandler,
-  ExecuteWithProgress,
   DownloadResult,
+  ExecuteWithProgress,
+  IndexesUpdateProgressHandler,
 } from './grpc-progressible';
-import type { DefaultCliConfig } from './cli-config';
 import { ServiceError } from './service-error';
 
 @injectable()
@@ -62,9 +64,22 @@ export class CoreClientProvider {
   private readonly onClientReadyEmitter =
     new Emitter<CoreClientProvider.Client>();
   private readonly onClientReady = this.onClientReadyEmitter.event;
+  private readonly onCoreServiceClientReadyEmitter =
+    new Emitter<ArduinoCoreServiceClient>();
+  private readonly onCoreServiceClientReady =
+    this.onCoreServiceClientReadyEmitter.event;
 
-  private pending: Deferred<CoreClientProvider.Client> | undefined;
   private _client: CoreClientProvider.Client | undefined;
+  private pendingClient: Deferred<CoreClientProvider.Client> | undefined;
+
+  /**
+   * Unlike the `_client`, this does not require initialization, hence does not provide the `instance`.
+   * You can use it to load the sketches, they do not require initialized library and package manager, etc.
+   */
+  private _coreServiceClient: ArduinoCoreServiceClient | undefined;
+  private pendingCoreServiceClient:
+    | Deferred<ArduinoCoreServiceClient>
+    | undefined;
 
   @postConstruct()
   protected init(): void {
@@ -98,8 +113,29 @@ export class CoreClientProvider {
     });
   }
 
+  get tryGetCoreServiceClient(): ArduinoCoreServiceClient | undefined {
+    return this._coreServiceClient;
+  }
+
   get tryGetClient(): CoreClientProvider.Client | undefined {
     return this._client;
+  }
+
+  get coreServiceClient(): Promise<ArduinoCoreServiceClient> {
+    const coreServiceClient = this.tryGetCoreServiceClient;
+    if (coreServiceClient) {
+      return Promise.resolve(coreServiceClient);
+    }
+    if (!this.pendingCoreServiceClient) {
+      this.pendingCoreServiceClient = new Deferred();
+      this.toDisposeAfterDidCreate.pushAll([
+        Disposable.create(() => (this.pendingCoreServiceClient = undefined)), // TODO: reject all pending requests before unsetting the ref?
+        this.onCoreServiceClientReady((client) =>
+          this.pendingCoreServiceClient?.resolve(client)
+        ),
+      ]);
+    }
+    return this.pendingCoreServiceClient.promise;
   }
 
   get client(): Promise<CoreClientProvider.Client> {
@@ -107,17 +143,17 @@ export class CoreClientProvider {
     if (client) {
       return Promise.resolve(client);
     }
-    if (!this.pending) {
-      this.pending = new Deferred();
+    if (!this.pendingClient) {
+      this.pendingClient = new Deferred();
       this.toDisposeAfterDidCreate.pushAll([
-        Disposable.create(() => (this.pending = undefined)), // TODO: reject all pending requests before unsetting the ref?
+        Disposable.create(() => (this.pendingClient = undefined)), // TODO: reject all pending requests before unsetting the ref?
         this.onClientReady((client) => {
-          this.pending?.resolve(client);
+          this.pendingClient?.resolve(client);
           this.toDisposeAfterDidCreate.dispose();
         }),
       ]);
     }
-    return this.pending.promise;
+    return this.pendingClient.promise;
   }
 
   async refresh(): Promise<void> {
@@ -183,6 +219,14 @@ export class CoreClientProvider {
     }
   }
 
+  private useCoreServiceClient(
+    coreServiceClient: ArduinoCoreServiceClient
+  ): ArduinoCoreServiceClient {
+    this._coreServiceClient = coreServiceClient;
+    this.onCoreServiceClientReadyEmitter.fire(this._coreServiceClient);
+    return this._coreServiceClient;
+  }
+
   private useClient(
     client: CoreClientProvider.Client
   ): CoreClientProvider.Client {
@@ -205,14 +249,15 @@ export class CoreClientProvider {
       'ArduinoCoreServiceService'
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ) as any;
-    const client = new ArduinoCoreServiceClient(
+    const coreServiceClient = new ArduinoCoreServiceClient(
       address,
       grpc.credentials.createInsecure(),
       this.channelOptions
     ) as ArduinoCoreServiceClient;
+    this.useCoreServiceClient(coreServiceClient);
 
     const instance = await new Promise<Instance>((resolve, reject) => {
-      client.create(new CreateRequest(), (err, resp) => {
+      coreServiceClient.create(new CreateRequest(), (err, resp) => {
         if (err) {
           reject(err);
           return;
@@ -230,7 +275,7 @@ export class CoreClientProvider {
       });
     });
 
-    return { instance, client };
+    return { instance, client: coreServiceClient };
   }
 
   private async initInstance({
@@ -448,6 +493,15 @@ export namespace CoreClientProvider {
 export abstract class CoreClientAware {
   @inject(CoreClientProvider)
   private readonly coreClientProvider: CoreClientProvider;
+
+  /**
+   * Accessor for the low-lever core service client for the CLI. It might be initialized or not.
+   * Use this to execute CLI request without requiring an initialized `instance`. For example, load a sketch.
+   * Otherwise, use `coreClient`.
+   */
+  protected get coreServiceClient(): Promise<ArduinoCoreServiceClient> {
+    return this.coreClientProvider.coreServiceClient;
+  }
 
   /**
    * Returns with a promise that resolves when the core client is initialized and ready.
