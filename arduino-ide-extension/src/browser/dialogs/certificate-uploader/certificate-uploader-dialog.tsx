@@ -97,6 +97,13 @@ export class UploadCertificateDialogWidget extends ReactWidget {
     );
   }
 
+  protected override onUpdateRequest(message: Message): void {
+    if (this.appStateService.state !== 'ready') {
+      return;
+    }
+    super.onUpdateRequest(message);
+  }
+
   protected uploadCertificates(
     fqbn: string,
     address: string,

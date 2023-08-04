@@ -9,12 +9,31 @@ import { inject, injectable } from '@theia/core/shared/inversify';
 
 @injectable()
 export abstract class AbstractDialog<T> extends TheiaAbstractDialog<T> {
+  private _isOpen = false;
+
   constructor(
     @inject(DialogProps) protected override readonly props: DialogProps
   ) {
     super(props);
     this.closeCrossNode.classList.remove(...codiconArray('close'));
     this.closeCrossNode.classList.add('fa', 'fa-close');
+  }
+
+  override async open(): Promise<T | undefined> {
+    this._isOpen = true;
+    try {
+      const result = await super.open();
+      return result;
+    } finally {
+      this._isOpen = false;
+    }
+  }
+
+  protected override onUpdateRequest(message: Message): void {
+    if (!this._isOpen) {
+      return; // break the update message
+    }
+    super.onUpdateRequest(message);
   }
 }
 

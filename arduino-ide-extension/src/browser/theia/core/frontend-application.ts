@@ -18,18 +18,19 @@ export class FrontendApplication extends TheiaFrontendApplication {
 
   private layoutWasRestored = false;
 
-  protected override async initializeLayout(): Promise<void> {
-    await super.initializeLayout();
-    this.workspaceService.roots.then(async (roots) => {
-      for (const root of roots) {
-        await this.commandService.executeCommand(
-          OpenSketchFiles.Commands.OPEN_SKETCH_FILES.id,
-          root.resource,
-          !this.layoutWasRestored
-        );
-        this.sketchesService.markAsRecentlyOpened(root.resource.toString()); // no await, will get the notification later and rebuild the menu
-      }
-    });
+  override async start(): Promise<void> {
+    return super.start().then(() =>
+      this.workspaceService.roots.then(async (roots) => {
+        for (const root of roots) {
+          await this.commandService.executeCommand(
+            OpenSketchFiles.Commands.OPEN_SKETCH_FILES.id,
+            root.resource,
+            !this.layoutWasRestored
+          );
+          this.sketchesService.markAsRecentlyOpened(root.resource.toString()); // no await, will get the notification later and rebuild the menu
+        }
+      })
+    );
   }
 
   protected override async restoreLayout(): Promise<boolean> {

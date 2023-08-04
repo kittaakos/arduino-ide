@@ -1,14 +1,15 @@
-import {
-  FrontendApplicationContribution,
+import type {
   FrontendApplication,
-  Widget,
-  Message,
-} from '@theia/core/lib/browser';
-import { injectable, inject } from '@theia/core/shared/inversify';
-import { ArduinoToolbar } from './arduino-toolbar';
-import { TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
-import { CommandRegistry } from '@theia/core';
+  FrontendApplicationContribution,
+} from '@theia/core/lib/browser/frontend-application';
+import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
 import { LabelParser } from '@theia/core/lib/browser/label-parser';
+import { TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
+import { CommandRegistry } from '@theia/core/lib/common/command';
+import type { Message } from '@theia/core/shared/@phosphor/messaging';
+import { Widget } from '@theia/core/shared/@phosphor/widgets';
+import { inject, injectable } from '@theia/core/shared/inversify';
+import { ArduinoToolbar } from './arduino-toolbar';
 
 export class ArduinoToolbarContainer extends Widget {
   protected toolbars: ArduinoToolbar[];
@@ -19,7 +20,8 @@ export class ArduinoToolbarContainer extends Widget {
     this.toolbars = toolbars;
   }
 
-  override onAfterAttach(msg: Message) {
+  protected override onAfterAttach(message: Message) {
+    super.onAfterAttach(message);
     for (const toolbar of this.toolbars) {
       Widget.attach(toolbar, this.node);
     }
@@ -34,19 +36,23 @@ export class ArduinoToolbarContribution
 
   constructor(
     @inject(TabBarToolbarRegistry)
-    protected tabBarToolBarRegistry: TabBarToolbarRegistry,
-    @inject(CommandRegistry) protected commandRegistry: CommandRegistry,
-    @inject(LabelParser) protected labelParser: LabelParser
+    tabBarToolBarRegistry: TabBarToolbarRegistry,
+    @inject(CommandRegistry) commandRegistry: CommandRegistry,
+    @inject(LabelParser) labelParser: LabelParser,
+    @inject(FrontendApplicationStateService)
+    appStateService: FrontendApplicationStateService
   ) {
     const leftToolbarWidget = new ArduinoToolbar(
       tabBarToolBarRegistry,
       commandRegistry,
+      appStateService,
       labelParser,
       'left'
     );
     const rightToolbarWidget = new ArduinoToolbar(
       tabBarToolBarRegistry,
       commandRegistry,
+      appStateService,
       labelParser,
       'right'
     );

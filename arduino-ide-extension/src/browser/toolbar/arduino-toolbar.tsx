@@ -1,13 +1,15 @@
-import * as React from '@theia/core/shared/react';
+import type { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
+import { LabelIcon, LabelParser } from '@theia/core/lib/browser/label-parser';
 import {
-  TabBarToolbar,
-  TabBarToolbarRegistry,
-  TabBarToolbarItem,
   ReactTabBarToolbarItem,
+  TabBarToolbar,
+  TabBarToolbarItem,
+  TabBarToolbarRegistry,
 } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
-import { CommandRegistry } from '@theia/core/lib/common/command';
-import { ReactWidget } from '@theia/core/lib/browser';
-import { LabelParser, LabelIcon } from '@theia/core/lib/browser/label-parser';
+import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
+import type { CommandRegistry } from '@theia/core/lib/common/command';
+import type { Message } from '@theia/core/shared/@phosphor/messaging';
+import * as React from '@theia/core/shared/react';
 
 export const ARDUINO_TOOLBAR_ITEM_CLASS = 'arduino-tool-item';
 
@@ -102,6 +104,7 @@ export class ArduinoToolbar extends ReactWidget {
   constructor(
     protected readonly tabBarToolbarRegistry: TabBarToolbarRegistry,
     protected readonly commands: CommandRegistry,
+    protected readonly appStateService: FrontendApplicationStateService,
     protected readonly labelParser: LabelParser,
     public readonly side: 'left' | 'right'
   ) {
@@ -144,6 +147,13 @@ export class ArduinoToolbar extends ReactWidget {
     this.commandIsToggled(id);
   protected commandIsToggled(command: string): boolean {
     return this.commands.isToggled(command, this);
+  }
+
+  protected override onUpdateRequest(message: Message): void {
+    if (this.appStateService.state !== 'ready') {
+      return;
+    }
+    super.onUpdateRequest(message);
   }
 
   protected render(): React.ReactNode {

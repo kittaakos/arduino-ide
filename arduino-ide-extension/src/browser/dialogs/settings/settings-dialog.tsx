@@ -4,9 +4,8 @@ import {
   inject,
   postConstruct,
 } from '@theia/core/shared/inversify';
-import { Widget } from '@theia/core/shared/@phosphor/widgets';
 import { Message } from '@theia/core/shared/@phosphor/messaging';
-import { DialogError, DialogProps, ReactWidget } from '@theia/core/lib/browser';
+import { DialogError, DialogProps } from '@theia/core/lib/browser';
 import { Settings, SettingsService } from './settings';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
@@ -15,56 +14,26 @@ import { nls } from '@theia/core/lib/common';
 import { SettingsComponent } from './settings-component';
 import { AsyncLocalizationProvider } from '@theia/core/lib/common/i18n/localization';
 import { AdditionalUrls } from '../../../common/protocol';
-import { AbstractDialog } from '../../theia/dialogs/dialogs';
+import { AbstractDialog, ReactDialog } from '../../theia/dialogs/dialogs';
 import { ThemeService } from '@theia/core/lib/browser/theming';
-
-@injectable()
-export class SettingsWidget extends ReactWidget {
-  @inject(SettingsService)
-  protected readonly settingsService: SettingsService;
-
-  @inject(FileService)
-  protected readonly fileService: FileService;
-
-  @inject(FileDialogService)
-  protected readonly fileDialogService: FileDialogService;
-
-  @inject(WindowService)
-  protected readonly windowService: WindowService;
-
-  @inject(AsyncLocalizationProvider)
-  protected readonly localizationProvider: AsyncLocalizationProvider;
-
-  @inject(ThemeService)
-  private readonly themeService: ThemeService;
-
-  protected render(): React.ReactNode {
-    return (
-      <SettingsComponent
-        settingsService={this.settingsService}
-        fileService={this.fileService}
-        fileDialogService={this.fileDialogService}
-        windowService={this.windowService}
-        localizationProvider={this.localizationProvider}
-        themeService={this.themeService}
-      />
-    );
-  }
-}
 
 @injectable()
 export class SettingsDialogProps extends DialogProps {}
 
 @injectable()
-export class SettingsDialog extends AbstractDialog<Promise<Settings>> {
+export class SettingsDialog extends ReactDialog<Promise<Settings>> {
   @inject(SettingsService)
-  protected readonly settingsService: SettingsService;
-
-  @inject(SettingsWidget)
-  protected readonly widget: SettingsWidget;
-
+  private readonly settingsService: SettingsService;
   @inject(ThemeService)
   private readonly themeService: ThemeService;
+  @inject(FileService)
+  private readonly fileService: FileService;
+  @inject(FileDialogService)
+  private readonly fileDialogService: FileDialogService;
+  @inject(WindowService)
+  private readonly windowService: WindowService;
+  @inject(AsyncLocalizationProvider)
+  private readonly localizationProvider: AsyncLocalizationProvider;
 
   constructor(
     @inject(SettingsDialogProps)
@@ -100,31 +69,24 @@ export class SettingsDialog extends AbstractDialog<Promise<Settings>> {
     return this.settingsService.settings();
   }
 
-  protected override onAfterAttach(msg: Message): void {
-    if (this.widget.isAttached) {
-      Widget.detach(this.widget);
-    }
-    Widget.attach(this.widget, this.contentNode);
-    this.toDisposeOnDetach.push(
-      this.settingsService.onDidChange(() => this.update())
-    );
-    super.onAfterAttach(msg);
-    this.update();
-  }
-
-  protected override onUpdateRequest(msg: Message): void {
-    super.onUpdateRequest(msg);
-    this.widget.update();
-  }
-
   protected override onActivateRequest(msg: Message): void {
-    super.onActivateRequest(msg);
-
     // calling settingsService.reset() in order to reload the settings from the preferenceService
     // and update the UI including changes triggered from the command palette
     this.settingsService.reset();
+    super.onActivateRequest(msg);
+  }
 
-    this.widget.activate();
+  protected override render(): React.ReactNode {
+    return (
+      <SettingsComponent
+        settingsService={this.settingsService}
+        fileService={this.fileService}
+        fileDialogService={this.fileDialogService}
+        windowService={this.windowService}
+        localizationProvider={this.localizationProvider}
+        themeService={this.themeService}
+      />
+    );
   }
 
   override async open(): Promise<Promise<Settings> | undefined> {

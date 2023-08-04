@@ -53,6 +53,7 @@ import {
   DockPanelRenderer as TheiaDockPanelRenderer,
   TabBarRendererFactory,
   ContextMenuRenderer,
+  SidePanelHandlerFactory,
 } from '@theia/core/lib/browser';
 import { MenuContribution } from '@theia/core/lib/common/menu';
 import {
@@ -191,7 +192,6 @@ import { bindArduinoPreferences } from './arduino-preferences';
 import { SettingsService } from './dialogs/settings/settings';
 import {
   SettingsDialog,
-  SettingsWidget,
   SettingsDialogProps,
 } from './dialogs/settings/settings-dialog';
 import { AddFile } from './contributions/add-file';
@@ -361,6 +361,9 @@ import { TerminalWidgetImpl } from './theia/terminal/terminal-widget-impl';
 import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { TerminalFrontendContribution } from './theia/terminal/terminal-frontend-contribution';
 import { TerminalFrontendContribution as TheiaTerminalFrontendContribution } from '@theia/terminal/lib/browser/terminal-frontend-contribution';
+import { TabBarToolbar } from './theia/core/tab-bar-toolbar';
+import { TabBarToolbarFactory } from '@theia/core/lib/browser/shell/tab-bar-toolbar/tab-bar-toolbar';
+import { SidePanelHandler } from './theia/core/side-panel-handler';
 
 // Hack to fix copy/cut/paste issue after electron version update in Theia.
 // https://github.com/eclipse-theia/theia/issues/12487
@@ -873,8 +876,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
 
   // Settings wrapper for the preferences and the CLI config.
   bind(SettingsService).toSelf().inSingletonScope();
-  // Settings dialog and widget
-  bind(SettingsWidget).toSelf().inSingletonScope();
+  // Settings dialog
   bind(SettingsDialog).toSelf().inSingletonScope();
   bind(SettingsDialogProps).toConstantValue({
     title: nls.localize(
@@ -1039,4 +1041,14 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   rebind(TheiaTerminalFrontendContribution).toService(
     TerminalFrontendContribution
   );
+
+  rebind(TabBarToolbarFactory).toFactory(({ container }) => () => {
+    const child = container.createChild();
+    child.bind(TabBarToolbar).toSelf().inSingletonScope();
+    // Relax toolbar updates before app ready
+    return child.get(TabBarToolbar);
+  });
+  // Relax sidebar updates before app ready
+  bind(SidePanelHandler).toSelf(); // No singleton!
+  rebind(SidePanelHandlerFactory).toAutoFactory(SidePanelHandler);
 });
