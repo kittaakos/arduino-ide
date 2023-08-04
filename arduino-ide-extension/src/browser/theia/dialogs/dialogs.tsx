@@ -21,6 +21,7 @@ export abstract class AbstractDialog<T> extends TheiaAbstractDialog<T> {
 @injectable()
 export abstract class ReactDialog<T> extends TheiaReactDialog<T> {
   private _isOnCloseRequestInProgress = false;
+  private _isOpen = false;
 
   override dispose(): void {
     // There is a bug in Theia, and the React component's `componentWillUnmount` will not be called, as the Theia widget is already disposed when closing and reopening a dialog.
@@ -34,6 +35,16 @@ export abstract class ReactDialog<T> extends TheiaReactDialog<T> {
     super.dispose();
   }
 
+  override async open(): Promise<T | undefined> {
+    this._isOpen = true;
+    try {
+      const result = await super.open();
+      return result;
+    } finally {
+      this._isOpen = false;
+    }
+  }
+
   protected override onCloseRequest(message: Message): void {
     this._isOnCloseRequestInProgress = true;
     try {
@@ -41,5 +52,12 @@ export abstract class ReactDialog<T> extends TheiaReactDialog<T> {
     } finally {
       this._isOnCloseRequestInProgress = false;
     }
+  }
+
+  protected override onUpdateRequest(message: Message): void {
+    if (!this._isOpen) {
+      return; // break the update message
+    }
+    super.onUpdateRequest(message);
   }
 }
