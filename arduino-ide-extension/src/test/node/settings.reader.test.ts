@@ -1,10 +1,10 @@
 import { expect } from 'chai';
-import { parse } from '../../node/settings-reader';
+import { parseJsonc } from '../../node/settings-reader';
 
 describe('settings-reader', () => {
   describe('parse', () => {
-    it('should handle comments', () => {
-      const actual = parse(`
+    it('should handle comments', async () => {
+      const actual = await parseJsonc(`
 {
     "alma": "korte",
     // comment
@@ -16,8 +16,8 @@ describe('settings-reader', () => {
       });
     });
 
-    it('should handle trailing comma', () => {
-      const actual = parse(`
+    it('should handle trailing comma', async () => {
+      const actual = await parseJsonc(`
 {
     "alma": "korte",
     "szilva": 123,
@@ -28,13 +28,13 @@ describe('settings-reader', () => {
       });
     });
 
-    it('should parse empty', () => {
-      const actual = parse('');
+    it('should parse empty', async () => {
+      const actual = await parseJsonc('');
       expect(actual).to.be.deep.equal({});
     });
 
-    it('should parse to undefined when parse has failed', () => {
-      const actual = parse(`
+    it('should parse to undefined when parse has failed', async () => {
+      const actual = await parseJsonc(`
 {
     alma:: 'korte'
     trash
