@@ -103,8 +103,8 @@ import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
 import { WebSocketProvider } from './web-socket/web-socket-provider';
 import { ClangFormatter } from './clang-formatter';
 import { FormatterPath } from '../common/protocol/formatter';
-import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';
-import { HostedPluginLocalizationService as TheiaHostedPluginLocalizationService } from '@theia/plugin-ext/lib/hosted/node/hosted-plugin-localization-service';
+import { LocalizationBackendContribution } from '@theia/core/lib/node/i18n/localization-backend-contribution';
+import { PluginLocalizationBackendContribution } from './theia/plugin-ext/plugin-localization-backend-contribution';
 import { SurveyNotificationServiceImpl } from './survey-service-impl';
 import {
   SurveyNotificationService,
@@ -374,9 +374,9 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(BackendApplicationContribution).toService(PlotterBackendContribution);
   bind(ArduinoLocalizationContribution).toSelf().inSingletonScope();
   bind(LocalizationContribution).toService(ArduinoLocalizationContribution);
-  bind(HostedPluginLocalizationService).toSelf().inSingletonScope();
-  rebind(TheiaHostedPluginLocalizationService).toService(
-    HostedPluginLocalizationService
+  bind(PluginLocalizationBackendContribution).toSelf().inSingletonScope();
+  rebind(LocalizationBackendContribution).toService(
+    PluginLocalizationBackendContribution
   );
 
   // Survey notification bindings
