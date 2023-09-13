@@ -31,7 +31,7 @@ export class ArduinoFirmwareUploaderImpl implements ArduinoFirmwareUploader {
     ]);
   }
 
-  async list(fqbn?: string): Promise<FirmwareInfo[]> {
+  async listFirmwares(fqbn?: string): Promise<FirmwareInfo[]> {
     const fqbnFlag = fqbn ? ['--fqbn', fqbn] : [];
     const firmwares: FirmwareInfo[] =
       JSON.parse(
@@ -47,14 +47,10 @@ export class ArduinoFirmwareUploaderImpl implements ArduinoFirmwareUploader {
   }
 
   async updatableBoards(): Promise<string[]> {
-    return (await this.list()).reduce(
+    return (await this.listFirmwares()).reduce(
       (a, b) => (a.includes(b.board_fqbn) ? a : [...a, b.board_fqbn]),
       [] as string[]
     );
-  }
-
-  async availableFirmwares(fqbn: string): Promise<FirmwareInfo[]> {
-    return await this.list(fqbn);
   }
 
   async flash(firmware: FirmwareInfo, port: Port): Promise<string> {

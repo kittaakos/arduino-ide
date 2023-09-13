@@ -63,9 +63,7 @@ export const FirmwareUploaderComponent = ({
 
     // fetch the firmwares for the selected board
     const board = selectedItem.board;
-    const firmwaresForFqbn = await firmwareUploader.availableFirmwares(
-      board.fqbn || ''
-    );
+    const firmwaresForFqbn = await firmwareUploader.listFirmwares(board.fqbn);
     setAvailableFirmwares(firmwaresForFqbn);
 
     const firmwaresOpts = firmwaresForFqbn.map((f) => ({

@@ -4,11 +4,11 @@ export const ArduinoFirmwareUploaderPath =
   '/services/arduino-firmware-uploader';
 export const ArduinoFirmwareUploader = Symbol('ArduinoFirmwareUploader');
 export interface FirmwareInfo {
-  board_name: string;
-  board_fqbn: string;
-  module: string;
-  firmware_version: string;
-  Latest: boolean;
+  readonly board_name: string;
+  readonly board_fqbn: string;
+  readonly module: string;
+  readonly firmware_version: string;
+  readonly Latest: boolean;
 }
 export interface UploadCertificateParams {
   readonly fqbn: string;
@@ -16,9 +16,8 @@ export interface UploadCertificateParams {
   readonly urls: readonly string[];
 }
 export interface ArduinoFirmwareUploader {
-  list(fqbn?: string): Promise<FirmwareInfo[]>;
+  listFirmwares(fqbn?: string): Promise<FirmwareInfo[]>;
   flash(firmware: FirmwareInfo, port: Port): Promise<string>;
   uploadCertificates(params: UploadCertificateParams): Promise<unknown>;
   updatableBoards(): Promise<string[]>;
-  availableFirmwares(fqbn: string): Promise<FirmwareInfo[]>;
 }
