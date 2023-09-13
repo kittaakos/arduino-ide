@@ -86,6 +86,7 @@ void loop() {}
   const execPath = formatter['execPath']();
   const actual = await spawnCommand(execPath, ['-style', styleArg], {
     input: minimalContent,
+    stripFinalNewline: false,
   });
   expect(actual).to.be.equal(minimalContent);
 }
