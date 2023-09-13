@@ -29,12 +29,10 @@ export class ClangFormatter implements Formatter {
   }): Promise<string> {
     const execPath = this.execPath();
     const args = await this.styleArgs(formatterConfigFolderUris, options);
-    const formatted = await spawnCommand(
-      execPath,
-      args,
-      console.error,
-      content
-    );
+    const formatted = await spawnCommand(execPath, args, {
+      input: content,
+      stripFinalNewline: false,
+    });
     return formatted;
   }
 

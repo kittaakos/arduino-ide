@@ -31,7 +31,7 @@
     "electron": "^26.2.4",
     "electron-builder": "^24.6.3",
     "electron-notarize": "^1.1.1",
-    "execa": "^7.1.1",
+    "execa": "^8.0.1",
     "file-type": "^18.5.0",
     "glob": "^10.3.3",
     "is-ci": "^2.0.0",

@@ -1,52 +1,25 @@
-import { spawn } from 'node:child_process';
+// @ts-expect-error see https://github.com/microsoft/TypeScript/issues/49721#issuecomment-1319854183
+import type { ExecaChildPromise, ExecaReturnValue, Options } from 'execa';
+import type { ChildProcess } from 'node:child_process';
 
-export function spawnCommand(
-  command: string,
-  args: string[],
-  onError: (error: Error) => void = (error) => console.log(error),
-  stdIn?: string
+export type ExecResult = ChildProcess &
+  ExecaChildPromise<string> &
+  Promise<ExecaReturnValue<string>>;
+
+export async function exec(
+  file: string,
+  args?: readonly string[],
+  options?: Options
+): Promise<ExecResult> {
+  const { execa } = await import('execa');
+  return execa(file, args, options);
+}
+
+export async function spawnCommand(
+  file: string,
+  args?: readonly string[],
+  options?: Options
 ): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const cp = spawn(command, args, { windowsHide: true });
-    const outBuffers: Buffer[] = [];
-    const errBuffers: Buffer[] = [];
-    cp.stdout.on('data', (b: Buffer) => outBuffers.push(b));
-    cp.stderr.on('data', (b: Buffer) => errBuffers.push(b));
-    cp.on('error', (error) => {
-      onError(error);
-      reject(error);
-    });
-    cp.on('exit', (code, signal) => {
-      if (code === 0) {
-        const result = Buffer.concat(outBuffers).toString('utf8');
-        resolve(result);
-        return;
-      }
-      if (errBuffers.length > 0) {
-        const message = Buffer.concat(errBuffers).toString('utf8').trim();
-        const error = new Error(
-          `Error executing ${command} ${args.join(' ')}: ${message}`
-        );
-        onError(error);
-        reject(error);
-        return;
-      }
-      if (signal) {
-        const error = new Error(`Process exited with signal: ${signal}`);
-        onError(error);
-        reject(error);
-        return;
-      }
-      if (code) {
-        const error = new Error(`Process exited with exit code: ${code}`);
-        onError(error);
-        reject(error);
-        return;
-      }
-    });
-    if (stdIn !== undefined) {
-      cp.stdin.write(stdIn);
-      cp.stdin.end();
-    }
-  });
+  const { stdout } = await exec(file, args, options);
+  return stdout;
 }

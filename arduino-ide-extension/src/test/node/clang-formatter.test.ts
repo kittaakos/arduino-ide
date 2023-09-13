@@ -84,12 +84,9 @@ void setup() {}
 void loop() {}
 `.trim();
   const execPath = formatter['execPath']();
-  const actual = await spawnCommand(
-    execPath,
-    ['-style', styleArg],
-    console.error,
-    minimalContent
-  );
+  const actual = await spawnCommand(execPath, ['-style', styleArg], {
+    input: minimalContent,
+  });
   expect(actual).to.be.equal(minimalContent);
 }
 

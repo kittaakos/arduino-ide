@@ -299,11 +299,12 @@ async function coreUpdateIndex(
 ): Promise<void> {
   const cliConfigPath = join(configDirPath, 'arduino-cli.yaml');
   await fs.access(cliConfigPath);
-  const stdout = await spawnCommand(
-    cliPath,
-    ['core', 'update-index', '--config-file', cliConfigPath],
-    (error) => console.error(error)
-  );
+  const stdout = await spawnCommand(cliPath, [
+    'core',
+    'update-index',
+    '--config-file',
+    cliConfigPath,
+  ]);
   console.log(stdout);
 }
 
