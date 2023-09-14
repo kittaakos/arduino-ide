@@ -38,3 +38,17 @@ export function uint8ArrayToString(uint8Array: Uint8Array): string {
 export function stringToUint8Array(text: string): Uint8Array {
   return Uint8Array.from(text, (char) => char.charCodeAt(0));
 }
+
+export function joinUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+  const length = arrays.reduce((acc, curr) => {
+    acc += curr.length;
+    return acc;
+  }, 0);
+  const merged = new Uint8Array(length);
+  let offset = 0;
+  for (const array of arrays) {
+    merged.set(array, offset);
+    offset += array.length;
+  }
+  return merged;
+}

@@ -2,6 +2,11 @@ import React from '@theia/core/shared/react';
 import type { Props, StylesConfig, ThemeConfig } from 'react-select';
 import Select from 'react-select';
 
+export interface SelectOption<T> {
+  readonly label: string;
+  readonly value: T;
+}
+
 export class ArduinoSelect extends React.Component<Props> {
   constructor(props: Props) {
     super(props);

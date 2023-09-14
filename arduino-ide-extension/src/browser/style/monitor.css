@@ -18,19 +18,19 @@
     margin: 0px;
 }
 
-.serial-monitor .head {
+.serial-monitor .header {
     display: flex;
     padding: 0px 5px 5px 5px;
     height: 27px;
     background-color: var(--theia-activityBar-background);
 }
 
-.serial-monitor .head .send {
+.serial-monitor .header .send {
     display: flex;
     flex: 1;
 }
 
-.serial-monitor .head .send > label:before {
+.serial-monitor .header .send > label:before {
     content: "";
     position: absolute;
     top: -1px;
@@ -40,35 +40,35 @@
     height: 30px;
 }
 
-.serial-monitor .head .send > label {
+.serial-monitor .header .send > label {
     position: relative;
     width: 100%;
     display: flex;
     align-self: baseline;
 }
 
-.serial-monitor .head .send > input,
-.serial-monitor .head .send > label > input {
+.serial-monitor .header .send > input,
+.serial-monitor .header .send > label > input {
     line-height: var(--theia-content-line-height);
     height: 27px;
     width: 100%;
 }
 
-.serial-monitor .head .send > label > input {
+.serial-monitor .header .send > label > input {
     padding-left: 30px;
     box-sizing: border-box;
 }
 
-.serial-monitor .head .send > input:focus,
-.serial-monitor .head .send > label > input:focus {
+.serial-monitor .header .send > input:focus,
+.serial-monitor .header .send > label > input:focus {
     border-color: var(--theia-focusBorder);
 }
 
-.serial-monitor .head .config {
+.serial-monitor .header .config {
     display: flex;
 }
 
-.serial-monitor .head .config .select {
+.serial-monitor .header .config .select {
     margin-left: 3px;
 }
 

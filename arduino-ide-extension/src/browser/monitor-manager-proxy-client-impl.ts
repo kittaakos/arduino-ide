@@ -41,7 +41,7 @@ export class MonitorManagerProxyClientImpl
   // Ideally a frontend component is connected to this event
   // to update the UI.
   private readonly onMessagesReceivedEmitter = new Emitter<{
-    messages: string[];
+    messages: Uint8Array;
   }>();
   readonly onMessagesReceived = this.onMessagesReceivedEmitter.event;
 
@@ -77,6 +77,7 @@ export class MonitorManagerProxyClientImpl
     }
     try {
       this.webSocket = new WebSocket(`ws://localhost:${addressPort}`);
+      this.webSocket.binaryType = 'arraybuffer';
     } catch {
       this.messageService.error(
         nls.localize(
@@ -91,14 +92,17 @@ export class MonitorManagerProxyClientImpl
     this.webSocket.onopen = () => opened.resolve();
     this.webSocket.onerror = () => opened.reject();
     this.webSocket.onmessage = (message) => {
-      const parsedMessage = JSON.parse(message.data);
-      if (Array.isArray(parsedMessage))
-        this.onMessagesReceivedEmitter.fire({ messages: parsedMessage });
-      else if (
-        parsedMessage.command ===
-        Monitor.MiddlewareCommand.ON_SETTINGS_DID_CHANGE
-      ) {
-        this.onMonitorSettingsDidChangeEmitter.fire(parsedMessage.data);
+      const { data } = message;
+      if (data instanceof ArrayBuffer) {
+        this.onMessagesReceivedEmitter.fire({ messages: new Uint8Array(data) });
+      } else {
+        const parsedMessage = JSON.parse(data);
+        if (
+          parsedMessage.command ===
+          Monitor.MiddlewareCommand.ON_SETTINGS_DID_CHANGE
+        ) {
+          this.onMonitorSettingsDidChangeEmitter.fire(parsedMessage.data);
+        }
       }
     };
     this.wsPort = addressPort;

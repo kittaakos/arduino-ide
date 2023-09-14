@@ -6,6 +6,7 @@ import {
   ILogger,
   nls,
 } from '@theia/core';
+import { wait } from '@theia/core/lib/common/promise-util';
 import { inject, named, postConstruct } from '@theia/core/shared/inversify';
 import {
   Board,
@@ -38,6 +39,7 @@ import {
 } from '@theia/core/lib/common/promise-util';
 import { MonitorServiceFactoryOptions } from './monitor-service-factory';
 import { ServiceError } from './service-error';
+import { joinUint8Arrays } from '../common/utils';
 
 export const MonitorServiceName = 'monitor-service';
 type DuplexHandlerKeys =
@@ -76,7 +78,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
 
   // List of messages received from the running pluggable monitor.
   // These are flushed from time to time to the frontend.
-  private messages: string[] = [];
+  private messages: Uint8Array[] = [];
 
   // Handles messages received from the frontend via websocket.
   private onMessageReceived?: Disposable;
@@ -97,7 +99,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
   private readonly board: Board;
   private readonly port: Port;
   private readonly monitorID: string;
-  private readonly streamingTextDecoder = new TextDecoder('utf8');
+  // private readonly streamingTextDecoder = new TextDecoder('utf8');
 
   /**
    * The lightweight representation of the port configuration currently in use for the running monitor.
@@ -372,9 +374,9 @@ export class MonitorService extends CoreClientAware implements Disposable {
               const data = monitorResponse.getRxData();
               const message =
                 typeof data === 'string'
-                  ? data
-                  : this.streamingTextDecoder.decode(data, { stream: true });
-              this.messages.push(...splitLines(message));
+                  ? new TextEncoder().encode(data) // the CLI does not send string
+                  : data;
+              this.messages.push(message);
             },
           },
         ];
@@ -391,6 +393,21 @@ export class MonitorService extends CoreClientAware implements Disposable {
             createdDuplex = await this.createDuplex();
             await new Promise<void>(createWriteToStreamExecutor(createdDuplex));
             this.duplex = createdDuplex;
+            const peekReadStream = async () => {
+              if (!this.duplex) {
+                return;
+              }
+              try {
+                if (!this.duplex.isPaused()) {
+                  this.duplex.pause();
+                }
+                await wait(16);
+                this.duplex.resume();
+              } finally {
+                setTimeout(() => peekReadStream(), 16);
+              }
+            };
+            peekReadStream();
           } catch (err) {
             createdDuplex?.end();
             throw err;
@@ -701,7 +718,8 @@ export class MonitorService extends CoreClientAware implements Disposable {
     if (!this.flushMessagesInterval) {
       const flushMessagesToFrontend = () => {
         if (this.messages.length) {
-          this.webSocketProvider.sendMessage(JSON.stringify(this.messages));
+          const data = joinUint8Arrays(this.messages);
+          this.webSocketProvider.sendMessage(data);
           this.messages = [];
         }
       };
@@ -770,13 +788,4 @@ export class MonitorService extends CoreClientAware implements Disposable {
       this.onMessageReceived = undefined;
     }
   }
-}
-
-/**
- * Splits a string into an array without removing newline char.
- * @param s string to split into lines
- * @returns an lines array
- */
-function splitLines(s: string): string[] {
-  return s.split(/(?<=\n)/);
 }

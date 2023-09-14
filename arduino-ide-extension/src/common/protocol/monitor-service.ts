@@ -36,7 +36,7 @@ export interface MonitorManagerProxy
 
 export const MonitorManagerProxyClient = Symbol('MonitorManagerProxyClient');
 export interface MonitorManagerProxyClient {
-  onMessagesReceived: Event<{ messages: string[] }>;
+  onMessagesReceived: Event<{ messages: Uint8Array }>;
   onMonitorSettingsDidChange: Event<MonitorSettings>;
   onMonitorShouldReset: Event<void>;
   connect(addressPort: number): Promise<void>;

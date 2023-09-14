@@ -44,7 +44,7 @@ export default class WebSocketProviderImpl implements WebSocketProvider {
     return this.server.address() as WebSocket.AddressInfo;
   }
 
-  sendMessage(message: string): void {
+  sendMessage(message: string | Uint8Array): void {
     this.wsClients.forEach((w) => {
       try {
         w.send(message);

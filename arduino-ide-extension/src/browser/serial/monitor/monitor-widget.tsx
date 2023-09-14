@@ -1,36 +1,39 @@
-import React from '@theia/core/shared/react';
+import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
 import {
-  injectable,
-  inject,
-  postConstruct,
-} from '@theia/core/shared/inversify';
-import { Emitter } from '@theia/core/lib/common/event';
+  BaseWidget,
+  Message,
+  MessageLoop,
+  Widget,
+} from '@theia/core/lib/browser/widgets';
+import { nls } from '@theia/core/lib/common';
 import {
   Disposable,
   DisposableCollection,
 } from '@theia/core/lib/common/disposable';
+import { Emitter } from '@theia/core/lib/common/event';
+import { Deferred } from '@theia/core/lib/common/promise-util';
 import {
-  ReactWidget,
-  Message,
-  Widget,
-  MessageLoop,
-} from '@theia/core/lib/browser/widgets';
-import { ArduinoSelect } from '../../widgets/arduino-select';
-import { SerialMonitorSendInput } from './serial-monitor-send-input';
-import { SerialMonitorOutput } from './serial-monitor-send-output';
-import { BoardsServiceProvider } from '../../boards/boards-service-provider';
-import { nls } from '@theia/core/lib/common';
+  inject,
+  injectable,
+  postConstruct,
+} from '@theia/core/shared/inversify';
+import React from '@theia/core/shared/react';
+import { createRoot, Root } from '@theia/core/shared/react-dom/client';
+import { TerminalFrontendContribution } from '@theia/terminal/lib/browser/terminal-frontend-contribution';
+import { TerminalWidgetImpl } from '@theia/terminal/lib/browser/terminal-widget-impl';
+import { serialMonitorWidgetLabel } from '../../../common/nls';
 import {
   MonitorEOL,
   MonitorManagerProxyClient,
   MonitorSettings,
 } from '../../../common/protocol';
+import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { MonitorModel } from '../../monitor-model';
-import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
-import { serialMonitorWidgetLabel } from '../../../common/nls';
+import { ArduinoSelect, SelectOption } from '../../widgets/arduino-select';
+import { SerialMonitorSendInput } from './serial-monitor-send-input';
 
 @injectable()
-export class MonitorWidget extends ReactWidget {
+export class MonitorWidget extends BaseWidget {
   static readonly ID = 'serial-monitor';
 
   protected settings: MonitorSettings = {};
@@ -56,8 +59,15 @@ export class MonitorWidget extends ReactWidget {
   private readonly boardsServiceProvider: BoardsServiceProvider;
   @inject(FrontendApplicationStateService)
   private readonly appStateService: FrontendApplicationStateService;
+  @inject(TerminalFrontendContribution)
+  private readonly terminalContribution: TerminalFrontendContribution;
 
   private readonly toDisposeOnReset: DisposableCollection;
+  private readonly contentNode: HTMLDivElement;
+  private readonly headerRoot: Root;
+  private readonly headerRef = React.createRef<HTMLDivElement>();
+  private _terminalWidget: TerminalWidgetImpl | undefined;
+  private _deferredTerminal: Deferred<TerminalWidgetImpl> = new Deferred();
 
   constructor() {
     super();
@@ -66,6 +76,15 @@ export class MonitorWidget extends ReactWidget {
     this.title.iconClass = 'monitor-tab-icon';
     this.title.closable = true;
     this.scrollOptions = undefined;
+    this.contentNode = document.createElement('div');
+    this.contentNode.classList.add('serial-monitor');
+    const headerContainer = document.createElement('div');
+    headerContainer.classList.add('header-container');
+    this.contentNode.appendChild(headerContainer);
+    this.headerRoot = createRoot(headerContainer);
+    this.node.tabIndex = 0;
+    this.node.appendChild(this.contentNode);
+
     this.toDisposeOnReset = new DisposableCollection();
     this.toDispose.push(this.clearOutputEmitter);
   }
@@ -73,12 +92,28 @@ export class MonitorWidget extends ReactWidget {
   @postConstruct()
   protected init(): void {
     this.toDisposeOnReset.dispose();
+    this._deferredTerminal = new Deferred();
+    this.terminalContribution
+      .newTerminal({
+        isPseudoTerminal: true,
+      })
+      .then((widget) => {
+        this._terminalWidget = widget as TerminalWidgetImpl;
+        this._deferredTerminal?.resolve(widget as TerminalWidgetImpl);
+      });
     this.toDisposeOnReset.pushAll([
       Disposable.create(() => this.monitorManagerProxy.disconnect()),
       this.monitorModel.onChange(() => this.update()),
       this.monitorManagerProxy.onMonitorSettingsDidChange((event) =>
         this.updateSettings(event)
       ),
+      this.monitorManagerProxy.onMessagesReceived(({ messages }) => {
+        this._terminalWidget?.getTerminal().write(messages);
+      }),
+      Disposable.create(() => {
+        this._terminalWidget?.dispose();
+        this._terminalWidget = undefined;
+      }),
     ]);
     this.startMonitor();
   }
@@ -108,6 +143,26 @@ export class MonitorWidget extends ReactWidget {
     super.dispose();
   }
 
+  protected override onAfterAttach(msg: Message): void {
+    super.onAfterAttach(msg);
+    this.headerRoot.render(this.renderHeader());
+    const attachTerminal = (widget: TerminalWidgetImpl) =>
+      Widget.attach(widget, this.contentNode);
+    const detachTerminal = (widget: TerminalWidgetImpl | undefined) => {
+      if (widget?.isAttached) {
+        Widget.detach(widget);
+      }
+    };
+    if (this._terminalWidget) {
+      attachTerminal(this._terminalWidget);
+    } else {
+      this._deferredTerminal.promise.then((widget) => attachTerminal(widget));
+    }
+    this.toDisposeOnDetach.push(
+      Disposable.create(() => detachTerminal(this._terminalWidget))
+    );
+  }
+
   protected override onCloseRequest(msg: Message): void {
     this.closing = true;
     super.onCloseRequest(msg);
@@ -119,12 +174,17 @@ export class MonitorWidget extends ReactWidget {
     if (!this.closing && this.isAttached) {
       super.onUpdateRequest(msg);
     }
+    if (this._terminalWidget) {
+      this._terminalWidget['onUpdateRequest'](msg);
+    }
   }
 
   protected override onResize(msg: Widget.ResizeMessage): void {
     super.onResize(msg);
+    if (this._terminalWidget) {
+      this._terminalWidget['onResize'](msg);
+    }
     this.widgetHeight = msg.height;
-    this.update();
   }
 
   protected override onActivateRequest(msg: Message): void {
@@ -147,7 +207,7 @@ export class MonitorWidget extends ReactWidget {
     );
   };
 
-  protected get lineEndings(): SerialMonitorOutput.SelectOption<MonitorEOL>[] {
+  protected get lineEndings(): SelectOption<MonitorEOL>[] {
     return [
       {
         label: nls.localize('arduino/serial/noLineEndings', 'No Line Ending'),
@@ -191,7 +251,7 @@ export class MonitorWidget extends ReactWidget {
     return this.monitorManagerProxy.getCurrentSettings(board, port);
   }
 
-  protected render(): React.ReactNode {
+  private renderHeader(): React.ReactNode {
     const baudrate = this.settings?.pluggableMonitorSettings
       ? this.settings.pluggableMonitorSettings.baudrate
       : undefined;
@@ -208,47 +268,36 @@ export class MonitorWidget extends ReactWidget {
       this.lineEndings.find(
         (item) => item.value === this.monitorModel.lineEnding
       ) || MonitorEOL.DEFAULT;
-
     return (
-      <div className="serial-monitor">
-        <div className="head">
-          <div className="send">
-            <SerialMonitorSendInput
-              boardsServiceProvider={this.boardsServiceProvider}
-              monitorModel={this.monitorModel}
-              resolveFocus={this.onFocusResolved}
-              onSend={this.onSend}
+      <div className="header" ref={this.headerRef}>
+        <div className="send">
+          <SerialMonitorSendInput
+            boardsServiceProvider={this.boardsServiceProvider}
+            monitorModel={this.monitorModel}
+            resolveFocus={this.onFocusResolved}
+            onSend={this.onSend}
+          />
+        </div>
+        <div className="config">
+          <div className="select">
+            <ArduinoSelect
+              maxMenuHeight={this.widgetHeight - 40}
+              options={this.lineEndings}
+              value={lineEnding}
+              onChange={this.onChangeLineEnding}
             />
           </div>
-          <div className="config">
+          {baudrateOptions && baudrateSelectedOption && (
             <div className="select">
               <ArduinoSelect
+                className="select"
                 maxMenuHeight={this.widgetHeight - 40}
-                options={this.lineEndings}
-                value={lineEnding}
-                onChange={this.onChangeLineEnding}
+                options={baudrateOptions}
+                value={baudrateSelectedOption}
+                onChange={this.onChangeBaudRate}
               />
             </div>
-            {baudrateOptions && baudrateSelectedOption && (
-              <div className="select">
-                <ArduinoSelect
-                  className="select"
-                  maxMenuHeight={this.widgetHeight - 40}
-                  options={baudrateOptions}
-                  value={baudrateSelectedOption}
-                  onChange={this.onChangeBaudRate}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="body">
-          <SerialMonitorOutput
-            monitorModel={this.monitorModel}
-            monitorManagerProxy={this.monitorManagerProxy}
-            clearConsoleEvent={this.clearOutputEmitter.event}
-            height={Math.floor(this.widgetHeight - 50)}
-          />
+          )}
         </div>
       </div>
     );
@@ -260,7 +309,7 @@ export class MonitorWidget extends ReactWidget {
   }
 
   protected readonly onChangeLineEnding = (
-    option: SerialMonitorOutput.SelectOption<MonitorEOL>
+    option: SelectOption<MonitorEOL>
   ): void => {
     this.monitorModel.lineEnding = option.value;
   };
