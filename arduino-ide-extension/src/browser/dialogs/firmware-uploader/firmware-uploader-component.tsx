@@ -2,7 +2,6 @@ import { nls } from '@theia/core/lib/common';
 import React from '@theia/core/shared/react';
 import {
   boardIdentifierEquals,
-  Port,
   portIdentifierEquals,
 } from '../../../common/protocol';
 import {
@@ -28,7 +27,7 @@ export const FirmwareUploaderComponent = ({
   boardList: BoardList;
   firmwareUploader: ArduinoFirmwareUploader;
   updatableFqbns: string[];
-  flashFirmware: (firmware: FirmwareInfo, port: Port) => Promise<any>;
+  flashFirmware: ArduinoFirmwareUploader['flash'];
   isOpen: any;
 }): React.ReactElement => {
   // boolean states for buttons
@@ -63,7 +62,7 @@ export const FirmwareUploaderComponent = ({
 
     // fetch the firmwares for the selected board
     const board = selectedItem.board;
-    const firmwaresForFqbn = await firmwareUploader.listFirmwares(board.fqbn);
+    const firmwaresForFqbn = await firmwareUploader.list(board.fqbn);
     setAvailableFirmwares(firmwaresForFqbn);
 
     const firmwaresOpts = firmwaresForFqbn.map((f) => ({
@@ -87,13 +86,13 @@ export const FirmwareUploaderComponent = ({
     const selectedBoard = selectedItem?.board;
     const selectedPort = selectedItem?.port;
     try {
-      const installStatus =
-        firmwareToFlash &&
-        selectedBoard &&
-        selectedPort &&
-        (await flashFirmware(firmwareToFlash, selectedPort));
-
-      setInstallFeedback((installStatus && 'ok') || 'fail');
+      if (firmwareToFlash && selectedBoard && selectedPort) {
+        await flashFirmware({
+          firmware: firmwareToFlash,
+          port: selectedPort,
+        });
+      }
+      setInstallFeedback('ok');
     } catch {
       setInstallFeedback('fail');
     }

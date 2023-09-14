@@ -7,11 +7,7 @@ import {
   postConstruct,
 } from '@theia/core/shared/inversify';
 import React from '@theia/core/shared/react';
-import {
-  ArduinoFirmwareUploader,
-  FirmwareInfo,
-} from '../../../common/protocol/arduino-firmware-uploader';
-import type { Port } from '../../../common/protocol/boards-service';
+import { ArduinoFirmwareUploader } from '../../../common/protocol/arduino-firmware-uploader';
 import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { UploadFirmware } from '../../contributions/upload-firmware';
 import { ReactDialog } from '../../theia/dialogs/dialogs';
@@ -64,7 +60,7 @@ export class UploadFirmwareDialog extends ReactDialog<void> {
           <FirmwareUploaderComponent
             boardList={this.boardsServiceProvider.boardList}
             firmwareUploader={this.arduinoFirmwareUploader}
-            flashFirmware={this.flashFirmware.bind(this)}
+            flashFirmware={this.flashFirmware}
             updatableFqbns={this.updatableFqbns}
             isOpen={this.isOpen}
           />
@@ -102,10 +98,12 @@ export class UploadFirmwareDialog extends ReactDialog<void> {
     }
   }
 
-  private flashFirmware(firmware: FirmwareInfo, port: Port): Promise<any> {
+  private readonly flashFirmware: ArduinoFirmwareUploader['flash'] = (
+    params
+  ) => {
     this.busyCallback(true);
     return this.arduinoFirmwareUploader
-      .flash(firmware, port)
+      .flash(params)
       .finally(() => this.busyCallback(false));
-  }
+  };
 }

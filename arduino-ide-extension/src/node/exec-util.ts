@@ -1,25 +1,21 @@
+import { Deferred } from '@theia/core/lib/common/promise-util';
 // @ts-expect-error see https://github.com/microsoft/TypeScript/issues/49721#issuecomment-1319854183
-import type { ExecaChildPromise, ExecaReturnValue, Options } from 'execa';
-import type { ChildProcess } from 'node:child_process';
+import type { execa, Options } from 'execa';
 
-export type ExecResult = ChildProcess &
-  ExecaChildPromise<string> &
-  Promise<ExecaReturnValue<string>>;
-
-export async function exec(
-  file: string,
-  args?: readonly string[],
-  options?: Options
-): Promise<ExecResult> {
+const deferred = new Deferred<typeof execa>();
+(async () => {
   const { execa } = await import('execa');
-  return execa(file, args, options);
-}
+  deferred.resolve(execa);
+})();
+
+export const execFunc = () => deferred.promise;
 
 export async function spawnCommand(
   file: string,
   args?: readonly string[],
   options?: Options
 ): Promise<string> {
-  const { stdout } = await exec(file, args, options);
+  const execa = await deferred.promise;
+  const { stdout } = await execa(file, args, options);
   return stdout;
 }

@@ -1,5 +1,7 @@
-import { DisposableCollection } from '@theia/core';
-import { Disposable } from '@theia/core/shared/vscode-languageserver-protocol';
+import {
+  Disposable,
+  DisposableCollection,
+} from '@theia/core/lib/common/disposable';
 import { OutputMessage } from '../../common/protocol';
 
 export class AutoFlushingBuffer implements Disposable {

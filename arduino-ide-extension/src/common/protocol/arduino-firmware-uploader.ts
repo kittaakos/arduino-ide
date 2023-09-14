@@ -1,8 +1,6 @@
-import type { Port } from './boards-service';
+import type { PortIdentifier } from './boards-service';
 
-export const ArduinoFirmwareUploaderPath =
-  '/services/arduino-firmware-uploader';
-export const ArduinoFirmwareUploader = Symbol('ArduinoFirmwareUploader');
+// The properties do not follow IDE2's naming conventions. The names come from the stdout of the CLI.
 export interface FirmwareInfo {
   readonly board_name: string;
   readonly board_fqbn: string;
@@ -10,14 +8,25 @@ export interface FirmwareInfo {
   readonly firmware_version: string;
   readonly Latest: boolean;
 }
+
 export interface UploadCertificateParams {
   readonly fqbn: string;
-  readonly address: string;
+  readonly port: PortIdentifier;
   readonly urls: readonly string[];
 }
+
+export interface FlashFirmwareParams {
+  readonly firmware: FirmwareInfo;
+  readonly port: PortIdentifier;
+}
+
+export const ArduinoFirmwareUploaderPath =
+  '/services/arduino-firmware-uploader';
+export const ArduinoFirmwareUploader = Symbol('ArduinoFirmwareUploader');
+
 export interface ArduinoFirmwareUploader {
-  listFirmwares(fqbn?: string): Promise<FirmwareInfo[]>;
-  flash(firmware: FirmwareInfo, port: Port): Promise<string>;
-  uploadCertificates(params: UploadCertificateParams): Promise<unknown>;
+  list(fqbn?: string): Promise<FirmwareInfo[]>;
+  flash(params: FlashFirmwareParams): Promise<void>;
+  uploadCertificates(params: UploadCertificateParams): Promise<void>;
   updatableBoards(): Promise<string[]>;
 }

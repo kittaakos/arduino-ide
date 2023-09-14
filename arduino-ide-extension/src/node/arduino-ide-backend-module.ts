@@ -341,7 +341,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
 
   [
     'daemon', // Logger for the Arduino daemon
-    'fwuploader', // Arduino Firmware uploader
     'discovery-log', // Boards discovery
     'config', // Logger for the CLI config reading and manipulation
     'sketches-service', // For creating, loading, and cloning sketches

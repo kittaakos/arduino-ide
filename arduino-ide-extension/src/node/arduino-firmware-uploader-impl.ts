@@ -1,90 +1,133 @@
-import { ILogger } from '@theia/core/lib/common/logger';
-import { inject, injectable, named } from '@theia/core/shared/inversify';
-import type { Port } from '../common/protocol';
+import { inject, injectable } from '@theia/core/shared/inversify';
+import { Writable } from 'node:stream';
 import {
   ArduinoFirmwareUploader,
   FirmwareInfo,
+  FlashFirmwareParams,
   UploadCertificateParams,
 } from '../common/protocol/arduino-firmware-uploader';
-import { spawnCommand } from './exec-util';
+import {
+  OutputMessage,
+  ResponseService,
+} from '../common/protocol/response-service';
+import { execFunc, spawnCommand } from './exec-util';
 import { MonitorManager } from './monitor-manager';
 import { arduinoFirmwareUploaderPath } from './resources';
 
 @injectable()
 export class ArduinoFirmwareUploaderImpl implements ArduinoFirmwareUploader {
-  @inject(ILogger)
-  @named('fwuploader')
-  private readonly logger: ILogger;
+  @inject(ResponseService)
+  private readonly responseService: ResponseService;
   @inject(MonitorManager)
   private readonly monitorManager: MonitorManager;
 
-  async uploadCertificates(params: UploadCertificateParams): Promise<string> {
-    const { fqbn, address, urls } = params;
-    return await this.runCommand([
+  async uploadCertificates(params: UploadCertificateParams): Promise<void> {
+    const { fqbn, port, urls } = params;
+    const args = [
       'certificates',
       'flash',
       '-b',
       fqbn,
       '-a',
-      address,
+      port.address,
       ...urls.flatMap((url) => ['-u', url]),
-    ]);
+    ];
+    await this.exec(args);
   }
 
-  async listFirmwares(fqbn?: string): Promise<FirmwareInfo[]> {
+  async list(fqbn?: string): Promise<FirmwareInfo[]> {
     const fqbnFlag = fqbn ? ['--fqbn', fqbn] : [];
-    const firmwares: FirmwareInfo[] =
-      JSON.parse(
-        await this.runCommand([
-          'firmware',
-          'list',
-          ...fqbnFlag,
-          '--format',
-          'json',
-        ])
-      ) || [];
+    const stdout = await spawnCommand(arduinoFirmwareUploaderPath, [
+      'firmware',
+      'list',
+      ...fqbnFlag,
+      '--format',
+      'json',
+    ]);
+    const firmwares = JSON.parse(stdout);
     return firmwares.reverse();
   }
 
   async updatableBoards(): Promise<string[]> {
-    return (await this.listFirmwares()).reduce(
+    return (await this.list()).reduce(
       (a, b) => (a.includes(b.board_fqbn) ? a : [...a, b.board_fqbn]),
       [] as string[]
     );
   }
 
-  async flash(firmware: FirmwareInfo, port: Port): Promise<string> {
-    const board = {
-      name: firmware.board_name,
-      fqbn: firmware.board_fqbn,
-    };
+  async flash(params: FlashFirmwareParams): Promise<void> {
+    const { firmware, port } = params;
+    const fqbn = firmware.board_fqbn;
+    const args = [
+      'firmware',
+      'flash',
+      '--fqbn',
+      firmware.board_fqbn,
+      '--address',
+      port.address,
+      '--module',
+      `${firmware.module}@${firmware.firmware_version}`,
+    ];
     try {
-      await this.monitorManager.notifyUploadStarted(board.fqbn, port);
-      const output = await this.runCommand([
-        'firmware',
-        'flash',
-        '--fqbn',
-        firmware.board_fqbn,
-        '--address',
-        port.address,
-        '--module',
-        `${firmware.module}@${firmware.firmware_version}`,
-      ]);
-      return output;
+      await this.monitorManager.notifyUploadStarted(fqbn, port);
+      await this.exec(args);
     } finally {
-      await this.monitorManager.notifyUploadFinished(board.fqbn, port, port); // here the before and after ports are assumed to be always the same
+      await this.monitorManager.notifyUploadFinished(fqbn, port, port); // here the before and after ports are assumed to be always the same
     }
   }
 
-  private onError(error: Error): void {
-    this.logger.error(error);
+  private async exec(args: string[]): Promise<string> {
+    const exec = await execFunc();
+    this.responseService.appendToOutput({
+      chunk: [arduinoFirmwareUploaderPath, ...args].join(' ') + '\n',
+    });
+    const result = exec(arduinoFirmwareUploaderPath, args);
+    const { stdout, stderr } = this.createWritableWrappers();
+    result.pipeStdout?.(stdout);
+    result.pipeStderr?.(stderr);
+    const { stdout: output } = await result;
+    return output;
   }
 
-  private async runCommand(args: string[]): Promise<string> {
-    return await spawnCommand(
-      arduinoFirmwareUploaderPath,
-      args,
-      this.onError.bind(this)
-    );
+  private createWritableWrappers(): Readonly<{
+    stdout: Writable;
+    stderr: Writable;
+  }> {
+    const options: ResponseServiceWritableOptions = {
+      responseService: this.responseService,
+      severity: OutputMessage.Severity.Info,
+    };
+    return {
+      stdout: new ResponseServiceWritable(options),
+      stderr: new ResponseServiceWritable({
+        ...options,
+        severity: OutputMessage.Severity.Error,
+      }),
+    };
+  }
+}
+
+interface ResponseServiceWritableOptions {
+  readonly responseService: ResponseService;
+  readonly severity: OutputMessage.Severity;
+}
+
+class ResponseServiceWritable extends Writable {
+  constructor(private readonly options: ResponseServiceWritableOptions) {
+    super();
+  }
+
+  override _write(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    chunk: any,
+    _: BufferEncoding,
+    callback: (error?: Error | null | undefined) => void
+  ): void {
+    const message = chunk.toString();
+    this.options.responseService.appendToOutput({
+      chunk: message,
+      severity: this.options.severity,
+    });
+    callback();
   }
 }
