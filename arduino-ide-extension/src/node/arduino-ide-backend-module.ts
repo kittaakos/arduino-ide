@@ -100,7 +100,6 @@ import {
   MonitorServiceFactoryOptions,
 } from './monitor-service-factory';
 import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
-import { WebSocketProvider } from './web-socket/web-socket-provider';
 import { ClangFormatter } from './clang-formatter';
 import { FormatterPath } from '../common/protocol/formatter';
 import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';
@@ -252,9 +251,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(MonitorSettingsProviderImpl).toSelf().inSingletonScope();
   bind(MonitorSettingsProvider).toService(MonitorSettingsProviderImpl);
 
-  bind(WebSocketProviderImpl).toSelf();
-  bind(WebSocketProvider).toService(WebSocketProviderImpl);
-
   bind(MonitorServiceFactory).toFactory(
     ({ container }) =>
       (options: MonitorServiceFactoryOptions) => {
@@ -264,6 +260,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
           .toConstantValue({
             ...options,
           });
+        child.bind(WebSocketProviderImpl).toSelf().inSingletonScope();
         child.bind(MonitorService).toSelf();
         return child.get<MonitorService>(MonitorService);
       }

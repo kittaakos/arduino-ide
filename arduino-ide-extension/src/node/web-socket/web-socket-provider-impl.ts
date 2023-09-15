@@ -1,10 +1,9 @@
-import { Emitter } from '@theia/core';
+import { Emitter } from '@theia/core/lib/common/event';
 import { injectable } from '@theia/core/shared/inversify';
 import WebSocket from '@theia/core/shared/ws';
-import { WebSocketProvider } from './web-socket-provider';
 
 @injectable()
-export default class WebSocketProviderImpl implements WebSocketProvider {
+export default class WebSocketProviderImpl {
   protected wsClients: WebSocket[];
   protected server: WebSocket.Server;
 

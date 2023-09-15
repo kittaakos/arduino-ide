@@ -6,7 +6,6 @@ import {
   ILogger,
   nls,
 } from '@theia/core';
-import { wait } from '@theia/core/lib/common/promise-util';
 import { inject, named, postConstruct } from '@theia/core/shared/inversify';
 import {
   Board,
@@ -29,7 +28,6 @@ import {
   MonitorResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/monitor_pb';
 import { CoreClientAware } from './core-client-provider';
-import { WebSocketProvider } from './web-socket/web-socket-provider';
 import { Port as RpcPort } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
 import { MonitorSettingsProvider } from './monitor-settings/monitor-settings-provider';
 import {
@@ -39,7 +37,7 @@ import {
 } from '@theia/core/lib/common/promise-util';
 import { MonitorServiceFactoryOptions } from './monitor-service-factory';
 import { ServiceError } from './service-error';
-import { joinUint8Arrays } from '../common/utils';
+import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
 
 export const MonitorServiceName = 'monitor-service';
 type DuplexHandlerKeys =
@@ -65,8 +63,8 @@ export class MonitorService extends CoreClientAware implements Disposable {
   @inject(MonitorSettingsProvider)
   private readonly monitorSettingsProvider: MonitorSettingsProvider;
 
-  @inject(WebSocketProvider)
-  private readonly webSocketProvider: WebSocketProvider;
+  @inject(WebSocketProviderImpl)
+  private readonly webSocketProvider: WebSocketProviderImpl;
 
   // Bidirectional gRPC stream used to receive and send data from the running
   // pluggable monitor managed by the Arduino CLI.
@@ -76,15 +74,8 @@ export class MonitorService extends CoreClientAware implements Disposable {
   // They can be freely modified while running.
   private settings: MonitorSettings = {};
 
-  // List of messages received from the running pluggable monitor.
-  // These are flushed from time to time to the frontend.
-  private messages: Uint8Array[] = [];
-
   // Handles messages received from the frontend via websocket.
   private onMessageReceived?: Disposable;
-
-  // Sends messages to the frontend from time to time.
-  private flushMessagesInterval?: NodeJS.Timeout;
 
   // Triggered each time the number of clients connected
   // to the this service WebSocket changes.
@@ -376,7 +367,13 @@ export class MonitorService extends CoreClientAware implements Disposable {
                 typeof data === 'string'
                   ? new TextEncoder().encode(data) // the CLI does not send string
                   : data;
-              this.messages.push(message);
+              this.webSocketProvider.sendMessage(message);
+              duplex.pause();
+              setTimeout(() => {
+                if (this.duplex) {
+                  duplex.resume();
+                }
+              }, 16); // ~60 Hz
             },
           },
         ];
@@ -393,21 +390,6 @@ export class MonitorService extends CoreClientAware implements Disposable {
             createdDuplex = await this.createDuplex();
             await new Promise<void>(createWriteToStreamExecutor(createdDuplex));
             this.duplex = createdDuplex;
-            const peekReadStream = async () => {
-              if (!this.duplex) {
-                return;
-              }
-              try {
-                if (!this.duplex.isPaused()) {
-                  this.duplex.pause();
-                }
-                await wait(16);
-                this.duplex.resume();
-              } finally {
-                setTimeout(() => peekReadStream(), 16);
-              }
-            };
-            peekReadStream();
           } catch (err) {
             createdDuplex?.end();
             throw err;
@@ -715,17 +697,6 @@ export class MonitorService extends CoreClientAware implements Disposable {
    * messages to and from the frontend and the running monitor
    */
   private startMessagesHandlers(): void {
-    if (!this.flushMessagesInterval) {
-      const flushMessagesToFrontend = () => {
-        if (this.messages.length) {
-          const data = joinUint8Arrays(this.messages);
-          this.webSocketProvider.sendMessage(data);
-          this.messages = [];
-        }
-      };
-      this.flushMessagesInterval = setInterval(flushMessagesToFrontend, 32);
-    }
-
     if (!this.onMessageReceived) {
       this.onMessageReceived = this.webSocketProvider.onMessageReceived(
         (msg: string) => {
@@ -779,10 +750,6 @@ export class MonitorService extends CoreClientAware implements Disposable {
    * and from the frontend and the running monitor
    */
   private stopMessagesHandlers(): void {
-    if (this.flushMessagesInterval) {
-      clearInterval(this.flushMessagesInterval);
-      this.flushMessagesInterval = undefined;
-    }
     if (this.onMessageReceived) {
       this.onMessageReceived.dispose();
       this.onMessageReceived = undefined;
