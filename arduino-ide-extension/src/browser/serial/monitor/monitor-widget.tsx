@@ -19,6 +19,7 @@ import {
 } from '@theia/core/shared/inversify';
 import React from '@theia/core/shared/react';
 import { createRoot, Root } from '@theia/core/shared/react-dom/client';
+import type { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { TerminalFrontendContribution } from '@theia/terminal/lib/browser/terminal-frontend-contribution';
 import { TerminalWidgetImpl } from '@theia/terminal/lib/browser/terminal-widget-impl';
 import { serialMonitorWidgetLabel } from '../../../common/nls';
@@ -136,6 +137,10 @@ export class MonitorWidget extends BaseWidget {
   clearConsole(): void {
     this.clearOutputEmitter.fire(undefined);
     this.update();
+  }
+
+  get terminal(): TerminalWidget | undefined {
+    return this._terminalWidget;
   }
 
   override dispose(): void {

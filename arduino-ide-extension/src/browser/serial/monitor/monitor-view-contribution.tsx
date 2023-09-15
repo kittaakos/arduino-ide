@@ -1,32 +1,40 @@
-import React from '@theia/core/shared/react';
-import {
-  injectable,
-  inject,
-  postConstruct,
-} from '@theia/core/shared/inversify';
-import {
-  AbstractViewContribution,
-  ApplicationShell,
-  codicon,
-} from '@theia/core/lib/browser';
-import { MonitorWidget } from './monitor-widget';
-import { MenuModelRegistry, Command, CommandRegistry } from '@theia/core';
+import { CommonCommands } from '@theia/core/lib/browser/common-frontend-contribution';
+import { ContextKeyService } from '@theia/core/lib/browser/context-key-service';
+import { ApplicationShell } from '@theia/core/lib/browser/shell/application-shell';
 import {
   TabBarToolbarContribution,
   TabBarToolbarRegistry,
 } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
-import { ArduinoToolbar } from '../../toolbar/arduino-toolbar';
-import { ArduinoMenus } from '../../menu/arduino-menus';
-import { nls } from '@theia/core/lib/common';
+import { AbstractViewContribution } from '@theia/core/lib/browser/shell/view-contribution';
+import { codicon } from '@theia/core/lib/browser/widgets';
+import { Command, CommandRegistry } from '@theia/core/lib/common/command';
 import { Event } from '@theia/core/lib/common/event';
-import { MonitorModel } from '../../monitor-model';
+import { MenuModelRegistry } from '@theia/core/lib/common/menu/menu-model-registry';
+import { nls } from '@theia/core/lib/common/nls';
+import { isOSX } from '@theia/core/lib/common/os';
+import type { MaybePromise } from '@theia/core/lib/common/types';
+import {
+  inject,
+  injectable,
+  postConstruct,
+} from '@theia/core/shared/inversify';
+import React from '@theia/core/shared/react';
+import type { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
+import { serialMonitorWidgetLabel } from '../../../common/nls';
 import { MonitorManagerProxyClient } from '../../../common/protocol';
 import {
   ArduinoPreferences,
   defaultMonitorWidgetDockPanel,
   isMonitorWidgetDockPanel,
 } from '../../arduino-preferences';
-import { serialMonitorWidgetLabel } from '../../../common/nls';
+import { KeybindingRegistry } from '../../contributions/contribution';
+import { ArduinoMenus } from '../../menu/arduino-menus';
+import { MonitorModel } from '../../monitor-model';
+import { ArduinoToolbar } from '../../toolbar/arduino-toolbar';
+import { MonitorWidget } from './monitor-widget';
+
+// https://code.visualstudio.com/api/references/when-clause-contexts
+const monitorFocus = 'monitorFocus';
 
 export namespace SerialMonitor {
   export namespace Commands {
@@ -52,6 +60,38 @@ export namespace SerialMonitor {
       },
       'vscode/output.contribution/clearOutput.label'
     );
+    export const TERMINAL_FIND_TEXT = Command.toDefaultLocalizedCommand({
+      id: 'arduino-monitor-find',
+      label: 'Find',
+    });
+    export const TERMINAL_FIND_TEXT_CANCEL = Command.toDefaultLocalizedCommand({
+      id: 'arduino-monitor-find-cancel',
+      label: 'Hide Find',
+    });
+    export const SCROLL_LINE_UP = Command.toDefaultLocalizedCommand({
+      id: 'monitor-scroll-line-up',
+      label: 'Scroll Up (Line)',
+    });
+    export const SCROLL_LINE_DOWN = Command.toDefaultLocalizedCommand({
+      id: 'monitor-scroll-line-down',
+      label: 'Scroll Down (Line)',
+    });
+    export const SCROLL_TO_TOP = Command.toDefaultLocalizedCommand({
+      id: 'monitor-scroll-top',
+      label: 'Scroll to Top',
+    });
+    export const SCROLL_PAGE_UP = Command.toDefaultLocalizedCommand({
+      id: 'monitor-scroll-page-up',
+      label: 'Scroll Up (Page)',
+    });
+    export const SCROLL_PAGE_DOWN = Command.toDefaultLocalizedCommand({
+      id: 'monitor-scroll-page-down',
+      label: 'Scroll Down (Page)',
+    });
+    export const SELECT_ALL: Command = {
+      id: 'monitor-select-all',
+      label: CommonCommands.SELECT_ALL.label,
+    };
   }
 }
 
@@ -71,6 +111,8 @@ export class MonitorViewContribution
   private readonly monitorManagerProxy: MonitorManagerProxyClient;
   @inject(ArduinoPreferences)
   private readonly arduinoPreferences: ArduinoPreferences;
+  @inject(ContextKeyService)
+  private readonly contextKeyService: ContextKeyService;
 
   private _panel: ApplicationShell.Area;
 
@@ -89,6 +131,14 @@ export class MonitorViewContribution
 
   @postConstruct()
   protected init(): void {
+    const contextKey = this.contextKeyService.createKey<boolean>(
+      monitorFocus,
+      false
+    );
+    const updateMonitorFocusContext = () => {
+      contextKey.set(this.shell.activeWidget instanceof MonitorWidget);
+    };
+    updateMonitorFocusContext();
     this._panel =
       this.arduinoPreferences['arduino.monitor.dockPanel'] ??
       defaultMonitorWidgetDockPanel;
@@ -108,6 +158,7 @@ export class MonitorViewContribution
         }
       }
     });
+    this.shell.onDidChangeActiveWidget(updateMonitorFocusContext);
   }
 
   override get defaultViewOptions(): ApplicationShell.WidgetOptions {
@@ -151,8 +202,8 @@ export class MonitorViewContribution
     });
   }
 
-  override registerCommands(commands: CommandRegistry): void {
-    commands.registerCommand(SerialMonitor.Commands.CLEAR_OUTPUT, {
+  override registerCommands(registry: CommandRegistry): void {
+    registry.registerCommand(SerialMonitor.Commands.CLEAR_OUTPUT, {
       isEnabled: (widget) => widget instanceof MonitorWidget,
       isVisible: (widget) => widget instanceof MonitorWidget,
       execute: (widget) => {
@@ -162,10 +213,10 @@ export class MonitorViewContribution
       },
     });
     if (this.toggleCommand) {
-      commands.registerCommand(this.toggleCommand, {
+      registry.registerCommand(this.toggleCommand, {
         execute: () => this.toggle(),
       });
-      commands.registerCommand(
+      registry.registerCommand(
         { id: MonitorViewContribution.TOGGLE_SERIAL_MONITOR_TOOLBAR },
         {
           isVisible: (widget) =>
@@ -174,10 +225,125 @@ export class MonitorViewContribution
         }
       );
     }
-    commands.registerCommand(
+    registry.registerCommand(
       { id: MonitorViewContribution.RESET_SERIAL_MONITOR },
       { execute: () => this.reset() }
     );
+
+    const findMonitorTerminal = () => {
+      const { activeWidget } = this.shell;
+      if (activeWidget instanceof MonitorWidget) {
+        return activeWidget.terminal;
+      }
+      return undefined;
+    };
+    const registerTerminalCommand = (
+      command: Command,
+      task: (widget: TerminalWidget | undefined) => MaybePromise<unknown>
+    ) => {
+      registry.registerCommand(command, {
+        isVisible: () => false,
+        isEnabled: () => {
+          return Boolean(findMonitorTerminal());
+        },
+        execute: async () => task(findMonitorTerminal()),
+      });
+    };
+    registry.registerCommand(SerialMonitor.Commands.TERMINAL_FIND_TEXT, {
+      isEnabled: () => {
+        const terminal = findMonitorTerminal();
+        if (terminal) {
+          return !terminal.getSearchBox().isVisible;
+        }
+        return false;
+      },
+      execute: () => {
+        return findMonitorTerminal()?.getSearchBox().show();
+      },
+    });
+    registry.registerCommand(SerialMonitor.Commands.TERMINAL_FIND_TEXT_CANCEL, {
+      isEnabled: () => {
+        const terminal = findMonitorTerminal();
+        if (terminal) {
+          return terminal.getSearchBox().isVisible;
+        }
+        return false;
+      },
+      execute: () => {
+        return findMonitorTerminal()?.getSearchBox().hide();
+      },
+    });
+    registerTerminalCommand(
+      SerialMonitor.Commands.SCROLL_LINE_DOWN,
+      (terminal) => terminal?.scrollLineDown()
+    );
+    registerTerminalCommand(SerialMonitor.Commands.SCROLL_LINE_UP, (terminal) =>
+      terminal?.scrollLineUp()
+    );
+    registerTerminalCommand(SerialMonitor.Commands.SCROLL_TO_TOP, (terminal) =>
+      terminal?.scrollToTop()
+    );
+    registerTerminalCommand(SerialMonitor.Commands.SCROLL_PAGE_UP, (terminal) =>
+      terminal?.scrollPageUp()
+    );
+    registerTerminalCommand(
+      SerialMonitor.Commands.SCROLL_PAGE_DOWN,
+      (terminal) => terminal?.scrollPageDown()
+    );
+    registerTerminalCommand(SerialMonitor.Commands.SELECT_ALL, (terminal) =>
+      terminal?.selectAll()
+    );
+  }
+
+  override registerKeybindings(keybindings: KeybindingRegistry): void {
+    if (isOSX) {
+      // selectAll on OSX
+      keybindings.registerKeybinding({
+        command: KeybindingRegistry.PASSTHROUGH_PSEUDO_COMMAND,
+        keybinding: 'ctrlcmd+a',
+        when: monitorFocus,
+      });
+    }
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.TERMINAL_FIND_TEXT.id,
+      keybinding: 'ctrlcmd+f',
+      when: monitorFocus,
+    });
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.TERMINAL_FIND_TEXT_CANCEL.id,
+      keybinding: 'esc',
+      context: monitorFocus,
+    });
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.SCROLL_LINE_UP.id,
+      keybinding: 'ctrl+shift+up',
+      when: monitorFocus,
+    });
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.SCROLL_LINE_DOWN.id,
+      keybinding: 'ctrl+shift+down',
+      when: monitorFocus,
+    });
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.SCROLL_TO_TOP.id,
+      keybinding: 'shift-home',
+      when: monitorFocus,
+    });
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.SCROLL_PAGE_UP.id,
+      keybinding: 'shift-pageUp',
+      when: monitorFocus,
+    });
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.SCROLL_PAGE_DOWN.id,
+      keybinding: 'shift-pageDown',
+      when: monitorFocus,
+    });
+    keybindings.registerKeybinding({
+      command: SerialMonitor.Commands.SELECT_ALL.id,
+      keybinding: 'ctrlcmd+a',
+      when: monitorFocus,
+    });
   }
 
   protected async toggle(): Promise<void> {

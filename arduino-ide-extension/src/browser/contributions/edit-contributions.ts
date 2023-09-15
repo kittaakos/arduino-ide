@@ -184,6 +184,7 @@ ${value}
     registry.registerKeybinding({
       command: EditContributions.Commands.FIND.id,
       keybinding: 'CtrlCmd+F',
+      when: 'editorFocus',
     });
     registry.registerKeybinding({
       command: EditContributions.Commands.FIND_NEXT.id,
