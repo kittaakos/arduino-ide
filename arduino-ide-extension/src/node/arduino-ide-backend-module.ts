@@ -99,7 +99,7 @@ import {
   MonitorServiceFactory,
   MonitorServiceFactoryOptions,
 } from './monitor-service-factory';
-import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
+import { WebSocketProviderImpl } from './web-socket/web-socket-provider-impl';
 import { ClangFormatter } from './clang-formatter';
 import { FormatterPath } from '../common/protocol/formatter';
 import { HostedPluginLocalizationService } from './theia/plugin-ext/hosted-plugin-localization-service';

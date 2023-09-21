@@ -1,24 +1,32 @@
 import { ClientDuplexStream, status } from '@grpc/grpc-js';
+import { ApplicationError } from '@theia/core/lib/common/application-error';
 import {
-  ApplicationError,
   Disposable,
-  Emitter,
-  ILogger,
-  nls,
-} from '@theia/core';
+  DisposableCollection,
+} from '@theia/core/lib/common/disposable';
+import { Emitter, Event } from '@theia/core/lib/common/event';
+import { ILogger } from '@theia/core/lib/common/logger';
+import { nls } from '@theia/core/lib/common/nls';
+import {
+  Deferred,
+  retry,
+  waitForEvent,
+} from '@theia/core/lib/common/promise-util';
 import { inject, named, postConstruct } from '@theia/core/shared/inversify';
+import { Transform } from 'node:stream';
 import {
   Board,
-  Port,
-  Monitor,
   createAlreadyConnectedError,
+  createConnectionFailedError,
   createMissingConfigurationError,
   createNotConnectedError,
-  createConnectionFailedError,
   isMonitorConnected,
+  Monitor,
   MonitorSettings,
   PluggableMonitorSettings,
+  Port,
 } from '../common/protocol';
+import { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
 import {
   EnumerateMonitorPortSettingsRequest,
   EnumerateMonitorPortSettingsResponse,
@@ -27,30 +35,25 @@ import {
   MonitorRequest,
   MonitorResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/monitor_pb';
-import { CoreClientAware } from './core-client-provider';
 import { Port as RpcPort } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
-import { MonitorSettingsProvider } from './monitor-settings/monitor-settings-provider';
-import {
-  Deferred,
-  retry,
-  timeoutReject,
-} from '@theia/core/lib/common/promise-util';
+import { CoreClientAware } from './core-client-provider';
 import { MonitorServiceFactoryOptions } from './monitor-service-factory';
+import { MonitorSettingsProvider } from './monitor-settings/monitor-settings-provider';
 import { ServiceError } from './service-error';
-import WebSocketProviderImpl from './web-socket/web-socket-provider-impl';
+import { WebSocketProviderImpl } from './web-socket/web-socket-provider-impl';
 
 export const MonitorServiceName = 'monitor-service';
-type DuplexHandlerKeys =
-  | 'close'
-  | 'end'
-  | 'error'
-  | 'data'
-  | 'status'
-  | 'metadata';
-interface DuplexHandler {
-  key: DuplexHandlerKeys;
-  callback: (...args: any) => void;
-}
+// type DuplexHandlerKeys =
+//   | 'close'
+//   | 'end'
+//   | 'error'
+//   | 'data'
+//   | 'status'
+//   | 'metadata';
+// interface DuplexHandler {
+//   key: DuplexHandlerKeys;
+//   callback: (...args: any) => void;
+// }
 
 const MAX_WRITE_TO_STREAM_TRIES = 10;
 const WRITE_TO_STREAM_TIMEOUT_MS = 30000;
@@ -113,7 +116,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
   @postConstruct()
   protected init(): void {
     this.onWSClientsNumberChanged =
-      this.webSocketProvider.onClientsNumberChanged(async (clients: number) => {
+      this.webSocketProvider.onClientCountDidChange(async (clients: number) => {
         if (clients === 0) {
           // There are no more clients that want to receive
           // data from this monitor, we can freely close
@@ -242,7 +245,7 @@ export class MonitorService extends CoreClientAware implements Disposable {
       }
       monitorRequest.setPortConfiguration(config);
 
-      await this.pollWriteToStream(monitorRequest);
+      await this.pollWriteToStream(coreClient.client, monitorRequest);
       // Only store the config, if the monitor has successfully started.
       this.currentPortConfigSnapshot = MonitorPortConfiguration.toObject(
         false,
@@ -290,122 +293,91 @@ export class MonitorService extends CoreClientAware implements Disposable {
     }
   }
 
-  async createDuplex(): Promise<
-    ClientDuplexStream<MonitorRequest, MonitorResponse>
-  > {
-    const coreClient = await this.coreClient;
-    return coreClient.client.monitor();
+  // setDuplexHandlers(
+  //   duplex: ClientDuplexStream<MonitorRequest, MonitorResponse>,
+  //   additionalHandlers: DuplexHandler[]
+  // ): void {
+  //   // default handlers
+  //   duplex
+  //     .on('close', () => {
+  //       if (duplex === this.duplex) {
+  //         this.duplex = null;
+  //         this.updateClientsSettings({
+  //           monitorUISettings: {
+  //             connected: false, // TODO: should be removed when plotter app understand the `connectionStatus` message
+  //             connectionStatus: 'not-connected',
+  //           },
+  //         });
+  //       }
+  //       this.logger.info(
+  //         `monitor to ${this.port?.address} using ${this.port?.protocol} closed by client`
+  //       );
+  //     })
+  //     .on('end', () => {
+  //       if (duplex === this.duplex) {
+  //         this.duplex = null;
+  //         this.updateClientsSettings({
+  //           monitorUISettings: {
+  //             connected: false, // TODO: should be removed when plotter app understand the `connectionStatus` message
+  //             connectionStatus: 'not-connected',
+  //           },
+  //         });
+  //       }
+  //       this.logger.info(
+  //         `monitor to ${this.port?.address} using ${this.port?.protocol} closed by server`
+  //       );
+  //     });
+
+  //   for (const handler of additionalHandlers) {
+  //     duplex.on(handler.key, handler.callback);
+  //   }
+  // }
+
+  async pollWriteToStream(
+    client: ArduinoCoreServiceClient,
+    request: MonitorRequest
+  ): Promise<void> {
+    const monitor = new MonitorImpl(() => this.createMonitor(client));
+    monitor.start(request, (source) => this.webSocketProvider.pipe(source));
+    await waitForEvent(monitor.onDidStart, WRITE_TO_STREAM_TIMEOUT_MS);
   }
 
-  setDuplexHandlers(
-    duplex: ClientDuplexStream<MonitorRequest, MonitorResponse>,
-    additionalHandlers: DuplexHandler[]
-  ): void {
-    // default handlers
-    duplex
-      .on('close', () => {
-        if (duplex === this.duplex) {
-          this.duplex = null;
-          this.updateClientsSettings({
-            monitorUISettings: {
-              connected: false, // TODO: should be removed when plotter app understand the `connectionStatus` message
-              connectionStatus: 'not-connected',
-            },
-          });
-        }
-        this.logger.info(
-          `monitor to ${this.port?.address} using ${this.port?.protocol} closed by client`
-        );
-      })
-      .on('end', () => {
-        if (duplex === this.duplex) {
-          this.duplex = null;
-          this.updateClientsSettings({
-            monitorUISettings: {
-              connected: false, // TODO: should be removed when plotter app understand the `connectionStatus` message
-              connectionStatus: 'not-connected',
-            },
-          });
-        }
-        this.logger.info(
-          `monitor to ${this.port?.address} using ${this.port?.protocol} closed by server`
-        );
-      });
-
-    for (const handler of additionalHandlers) {
-      duplex.on(handler.key, handler.callback);
-    }
-  }
-
-  pollWriteToStream(request: MonitorRequest): Promise<void> {
-    const createWriteToStreamExecutor =
-      (duplex: ClientDuplexStream<MonitorRequest, MonitorResponse>) =>
-      (resolve: () => void, reject: (reason?: unknown) => void) => {
-        const resolvingDuplexHandlers: DuplexHandler[] = [
-          {
-            key: 'error',
-            callback: async (err: Error) => {
-              this.logger.error(err);
-              const details = ServiceError.is(err) ? err.details : err.message;
-              reject(createConnectionFailedError(this.port, details));
-            },
-          },
-          {
-            key: 'data',
-            callback: async (monitorResponse: MonitorResponse) => {
-              if (monitorResponse.getError()) {
-                // TODO: Maybe disconnect
-                this.logger.error(monitorResponse.getError());
-                return;
-              }
-              if (monitorResponse.getSuccess()) {
-                resolve();
-                return;
-              }
-              const data = monitorResponse.getRxData();
-              const message =
-                typeof data === 'string'
-                  ? new TextEncoder().encode(data) // the CLI does not send string
-                  : data;
-              this.webSocketProvider.sendMessage(message);
-              duplex.pause();
-              setTimeout(() => {
-                if (this.duplex) {
-                  duplex.resume();
-                }
-              }, 16); // ~60 Hz
-            },
-          },
-        ];
-
-        this.setDuplexHandlers(duplex, resolvingDuplexHandlers);
-        duplex.write(request);
-      };
-
+  private async createMonitor(
+    client: ArduinoCoreServiceClient
+  ): Promise<ClientDuplexStream<MonitorRequest, MonitorResponse>> {
+    const timeout = new Deferred<never>();
+    const timer = setTimeout(
+      () =>
+        timeout.reject(
+          new Error(
+            nls.localize(
+              'arduino/monitor/connectionTimeout',
+              "Timeout. The IDE has not received the 'success' message from the monitor after successfully connecting to it"
+            )
+          )
+        ),
+      WRITE_TO_STREAM_TIMEOUT_MS
+    );
     return Promise.race([
       retry(
         async () => {
-          let createdDuplex = undefined;
+          let duplex:
+            | ClientDuplexStream<MonitorRequest, MonitorResponse>
+            | undefined = undefined;
           try {
-            createdDuplex = await this.createDuplex();
-            await new Promise<void>(createWriteToStreamExecutor(createdDuplex));
-            this.duplex = createdDuplex;
+            duplex = client.monitor();
+            clearTimeout(timer);
+            return duplex;
           } catch (err) {
-            createdDuplex?.end();
+            duplex?.end();
             throw err;
           }
         },
         2_000,
         MAX_WRITE_TO_STREAM_TRIES
       ),
-      timeoutReject(
-        WRITE_TO_STREAM_TIMEOUT_MS,
-        nls.localize(
-          'arduino/monitor/connectionTimeout',
-          "Timeout. The IDE has not received the 'success' message from the monitor after successfully connecting to it"
-        )
-      ),
-    ]) as Promise<unknown> as Promise<void>;
+      timeout.promise,
+    ]);
   }
 
   /**
@@ -754,5 +726,72 @@ export class MonitorService extends CoreClientAware implements Disposable {
       this.onMessageReceived.dispose();
       this.onMessageReceived = undefined;
     }
+  }
+}
+
+class MonitorImpl implements Disposable {
+  private readonly toDispose: DisposableCollection;
+  private readonly onDidStartEmitter: Emitter<void>;
+
+  constructor(
+    private readonly create: () => Promise<
+      ClientDuplexStream<MonitorRequest, MonitorResponse>
+    >
+  ) {
+    this.onDidStartEmitter = new Emitter();
+    this.toDispose = new DisposableCollection(this.onDidStartEmitter);
+  }
+
+  start(
+    request: MonitorRequest,
+    pipe: (source: NodeJS.ReadableStream) => void
+  ): void {
+    const fireDidStart = () => {
+      this.onDidStartEmitter.fire();
+    };
+    process.nextTick(async () => {
+      const duplex = await this.create();
+      this.toDispose.push(
+        Disposable.create(() => {
+          duplex.pause();
+          duplex.end();
+          duplex.destroy();
+        })
+      );
+      const transform = duplex.pipe(
+        new Transform({
+          readableObjectMode: false,
+          writableObjectMode: true,
+          highWaterMark: 128, // 128 monitor response objects
+          transform(chunk: MonitorResponse, _, callback) {
+            const error = chunk.getError();
+            if (error) {
+              callback(new Error(error));
+              return;
+            }
+            const success = chunk.getSuccess();
+            if (success) {
+              fireDidStart();
+              callback();
+              return;
+            }
+            const data = chunk.getRxData();
+            callback(null, data);
+          },
+        })
+      );
+      // .pipe(binarySplit());
+      pipe(transform);
+      // this.toDispose.push(Disposable.create(() => transform.unpipe(target)));
+      duplex.write(request);
+    }, 0);
+  }
+
+  get onDidStart(): Event<void> {
+    return this.onDidStartEmitter.event;
+  }
+
+  dispose(): void {
+    this.toDispose.dispose();
   }
 }

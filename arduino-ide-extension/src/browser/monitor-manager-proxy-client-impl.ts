@@ -20,6 +20,7 @@ import {
   MonitorSettings,
   PluggableMonitorSettings,
 } from '../common/protocol/monitor-service';
+import { joinUint8Arrays } from '../common/utils';
 import { BoardsServiceProvider } from './boards/boards-service-provider';
 
 @injectable()
@@ -59,6 +60,7 @@ export class MonitorManagerProxyClientImpl
   private wsPort?: number;
   private lastConnectedBoard: BoardListItem | undefined;
   private onBoardListDidChange: Disposable | undefined;
+  private _buffer: ArrayBuffer[] = [];
 
   getWebSocketPort(): number | undefined {
     return this.wsPort;
@@ -89,12 +91,25 @@ export class MonitorManagerProxyClientImpl
     }
 
     const opened = new Deferred<void>();
-    this.webSocket.onopen = () => opened.resolve();
+    let timer: number | undefined = undefined;
+    new ReadableStream();
+    this.webSocket.onopen = () => {
+      opened.resolve();
+      timer = window.setInterval(() => {
+        if (this._buffer.length) {
+          const messages = joinUint8Arrays(
+            this._buffer.map((data) => new Uint8Array(data))
+          );
+          this.onMessagesReceivedEmitter.fire({ messages });
+          this._buffer = [];
+        }
+      }, 16);
+    };
     this.webSocket.onerror = () => opened.reject();
     this.webSocket.onmessage = (message) => {
       const { data } = message;
       if (data instanceof ArrayBuffer) {
-        this.onMessagesReceivedEmitter.fire({ messages: new Uint8Array(data) });
+        this._buffer.push(data);
       } else {
         const parsedMessage = JSON.parse(data);
         if (
@@ -103,6 +118,11 @@ export class MonitorManagerProxyClientImpl
         ) {
           this.onMonitorSettingsDidChangeEmitter.fire(parsedMessage.data);
         }
+      }
+    };
+    this.webSocket.onclose = () => {
+      if (typeof timer === 'number') {
+        window.clearInterval(timer);
       }
     };
     this.wsPort = addressPort;
