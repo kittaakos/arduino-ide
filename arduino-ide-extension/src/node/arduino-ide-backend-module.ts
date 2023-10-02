@@ -23,7 +23,11 @@ import { CoreServiceImpl } from './core-service-impl';
 import { CoreService, CoreServicePath } from '../common/protocol/core-service';
 import { ConnectionContainerModule } from '@theia/core/lib/node/messaging/connection-container-module';
 import { CoreClientProvider } from './core-client-provider';
-import { ConnectionHandler, JsonRpcConnectionHandler } from '@theia/core';
+import {
+  ConnectionHandler,
+  JsonRpcConnectionHandler,
+  RpcConnectionHandler,
+} from '@theia/core';
 import { DefaultWorkspaceServer } from './theia/workspace/default-workspace-server';
 import { WorkspaceServer as TheiaWorkspaceServer } from '@theia/workspace/lib/common/workspace-protocol';
 import { SketchesServiceImpl } from './sketches-service-impl';
@@ -121,6 +125,11 @@ import {
   PluginDeployer_GH_12064,
 } from './theia/plugin-ext/plugin-deployer';
 import { SettingsReader } from './settings-reader';
+import {
+  MonitorService2,
+  MonitorService2Path,
+} from '../common/protocol/monitor-service2';
+import { MonitorService2Impl } from './monitor-service2-impl';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(BackendApplication).toSelf().inSingletonScope();
@@ -286,6 +295,15 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
       );
     })
   );
+  bind(MonitorService2Impl).toSelf().inSingletonScope();
+  bind(MonitorService2).toService(MonitorService2Impl);
+  bind(ConnectionHandler).toDynamicValue(
+    ({ container }) =>
+      new RpcConnectionHandler(MonitorService2Path, () =>
+        container.get<MonitorService2>(MonitorService2)
+      )
+  );
+  bind(BackendApplicationContribution).toService(MonitorService2);
 
   // File-system extension for mapping paths to URIs
   bind(NodeFileSystemExt).toSelf().inSingletonScope();

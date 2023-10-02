@@ -1,3 +1,7 @@
+import { DisposableCollection } from '@theia/core/lib/common/disposable';
+import { Event } from '@theia/core/lib/common/event';
+import { MaybePromise } from '@theia/core/lib/common/types';
+
 export const naturalCompare: (left: string, right: string) => number =
   require('string-natural-compare').caseInsensitive;
 
@@ -51,4 +55,25 @@ export function joinUint8Arrays(arrays: Uint8Array[]): Uint8Array {
     offset += array.length;
   }
   return merged;
+}
+
+export async function waitForEvent<T = void>(
+  event: Event<T>,
+  accept: (event: T) => MaybePromise<boolean> = () => true
+): Promise<T> {
+  const toDispose = new DisposableCollection();
+  try {
+    const value = await new Promise<T>((resolve) => {
+      toDispose.push(
+        event(async (e) => {
+          if (await accept(e)) {
+            resolve(e);
+          }
+        })
+      );
+    });
+    return value;
+  } finally {
+    toDispose.dispose();
+  }
 }

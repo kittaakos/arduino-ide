@@ -1,5 +1,6 @@
 import { CommonCommands } from '@theia/core/lib/browser/common-frontend-contribution';
 import { ContextKeyService } from '@theia/core/lib/browser/context-key-service';
+import { Endpoint } from '@theia/core/lib/browser/endpoint';
 import { ApplicationShell } from '@theia/core/lib/browser/shell/application-shell';
 import {
   TabBarToolbarContribution,
@@ -22,11 +23,13 @@ import React from '@theia/core/shared/react';
 import type { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { serialMonitorWidgetLabel } from '../../../common/nls';
 import { MonitorManagerProxyClient } from '../../../common/protocol';
+import { createMonitorID } from '../../../common/protocol/monitor-service2';
 import {
   ArduinoPreferences,
   defaultMonitorWidgetDockPanel,
   isMonitorWidgetDockPanel,
 } from '../../arduino-preferences';
+import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { KeybindingRegistry } from '../../contributions/contribution';
 import { ArduinoMenus } from '../../menu/arduino-menus';
 import { MonitorModel } from '../../monitor-model';
@@ -113,6 +116,8 @@ export class MonitorViewContribution
   private readonly arduinoPreferences: ArduinoPreferences;
   @inject(ContextKeyService)
   private readonly contextKeyService: ContextKeyService;
+  @inject(BoardsServiceProvider)
+  private readonly boardsServiceProvider: BoardsServiceProvider;
 
   private _panel: ApplicationShell.Area;
 
@@ -203,6 +208,41 @@ export class MonitorViewContribution
   }
 
   override registerCommands(registry: CommandRegistry): void {
+    registry.registerCommand(
+      { id: 'hello.hello', label: 'ping monitor' },
+      {
+        execute: async () => {
+          const { boardList } = this.boardsServiceProvider;
+          const index = boardList.selectedIndex;
+          const selectedBoard = boardList.items[index];
+          if (selectedBoard) {
+            const { port, board } = selectedBoard;
+            if (board && board.fqbn && port) {
+              const endpoint = new Endpoint({
+                path: 'monitor',
+              }).getRestUrl();
+              const url = endpoint
+                .withQuery(createMonitorID({ port, fqbn: board.fqbn }))
+                .toString();
+              const createResp = await fetch(url, { method: 'PUT' });
+              console.log('createResp', createResp);
+              fetch(url).then(async (resp) => {
+                const reader = resp.body?.getReader();
+                if (reader) {
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                      return;
+                    }
+                    console.log(value);
+                  }
+                }
+              });
+            }
+          }
+        },
+      }
+    );
     registry.registerCommand(SerialMonitor.Commands.CLEAR_OUTPUT, {
       isEnabled: (widget) => widget instanceof MonitorWidget,
       isVisible: (widget) => widget instanceof MonitorWidget,
