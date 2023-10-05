@@ -9,7 +9,7 @@ import { Deferred, retry } from '@theia/core/lib/common/promise-util';
 import type { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
 import { injectable } from '@theia/core/shared/inversify';
 import type { Application, Request, Response } from 'express';
-import { Duplex, Transform } from 'node:stream';
+import { Transform } from 'node:stream';
 import {
   isMonitorID,
   MonitorID2,
@@ -104,7 +104,9 @@ export class MonitorService2Impl
     return monitor?.status;
   }
 
-  private async duplex(id: MonitorID2): Promise<Duplex> {
+  private async duplex(
+    id: MonitorID2
+  ): Promise<ClientDuplexStream<MonitorRequest, MonitorResponse>> {
     const monitor = this.monitors.get(id);
     if (!monitor) {
       throw new Error(`Monitor not found: ${id}`); // TODO: make it `ApplicationError`
@@ -199,16 +201,20 @@ export class MonitorService2Impl
     if (id) {
       try {
         const duplex = await this.duplex(id);
-        duplex.on('data', (chunk) => {
-          console.log('data', chunk);
-        });
-        // duplex.on('data', (data) => resp.send(data));
-        // duplex.on('end', () => resp.sendStatus(200));
-        // duplex.on('error', (err) => resp.sendStatus(500).send(err));
-        // resp.sendStatus(200);
-        // duplex.pipe(resp);
-        // resp.send(duplex);
-        // resp.send();
+        duplex
+          .pipe(
+            new Transform({
+              readableObjectMode: false,
+              writableObjectMode: true,
+              transform(chunk, _, callback) {
+                if (chunk instanceof MonitorResponse) {
+                  const data = chunk.getRxData_asU8();
+                  callback(null, data);
+                }
+              },
+            })
+          )
+          .pipe(resp);
       } catch (err) {
         console.log(err);
         resp.status(500).send(err).end();
@@ -253,7 +259,9 @@ class MonitorImpl implements Disposable {
   private readonly toDispose: DisposableCollection;
   private readonly onDidStartEmitter: Emitter<void>;
   private readonly onWillStopEmitter: Emitter<void>;
-  private _duplex: Transform | undefined;
+  private _duplex:
+    | ClientDuplexStream<MonitorRequest, MonitorResponse>
+    | undefined;
   private _status: MonitorStatus2;
 
   constructor(
@@ -270,57 +278,76 @@ class MonitorImpl implements Disposable {
   }
 
   start(request: MonitorRequest): void {
-    const fireDidStart = () => this.changeState('started');
+    this.changeState('starting');
     process.nextTick(async () => {
       const duplex = await this.create();
       this.toDispose.pushAll([
         Disposable.create(() => duplex.destroy()),
         Disposable.create(() => (this._duplex = undefined)),
       ]);
-      duplex.on('data', (data) => {
-        console.log(data);
-      });
-      this._duplex = duplex.pipe(
-        new Transform({
-          objectMode: false,
-          transform(chunk: MonitorResponse | MonitorRequest, _, callback) {
-            if (chunk instanceof Buffer) {
-              return callback(null, chunk);
-            } else if (chunk instanceof MonitorResponse) {
-              const error = chunk.getError();
-              if (error) {
-                return callback(new Error(error));
-              }
-              const success = chunk.getSuccess();
-              if (success) {
-                fireDidStart();
-                return callback();
-              }
-              const data = chunk.getRxData();
-              return callback(null, data);
-            }
-          },
-        })
-      );
-      this._duplex.on('close', () => this.stop());
+      // readable streams are in paused mode until `data` listener is attached or the stream is piped.
+      // however, when data is available to be read, the `'readable'` event will fire.
+      duplex.on('end', () => this.stop());
+      const ready = new Deferred();
+      const dataHandler = (response: MonitorResponse) => {
+        if (response.getError()) {
+          duplex.removeListener('data', dataHandler);
+          ready.reject(new Error(response.getError()));
+          return;
+        }
+        if (response.getSuccess()) {
+          duplex.removeListener('data', dataHandler);
+          ready.resolve();
+          return;
+        }
+      };
+      duplex.on('data', dataHandler);
       duplex.write(request);
-      // this._duplex.pipe(process.stdout);
-      this._duplex.on('drain', () => {
-        console.log('drain');
-      });
-      this._duplex.on('pause', () => {
-        console.log('pause');
-      });
-      this._duplex.on('finish', () => {
-        console.log('finish');
-      });
-      this._duplex.on('readable', () => {
-        console.log('readable');
-      });
-      this._duplex.on('resume', () => {
-        console.log('resume');
-      });
-    }, 0);
+      await ready.promise;
+      this._duplex = duplex;
+      this.changeState('started');
+
+      // this._duplex = duplex.pipe(
+      //   new Transform({
+      //     objectMode: false,
+      //     transform(chunk: MonitorResponse | MonitorRequest, _, callback) {
+      //       if (chunk instanceof Buffer) {
+      //         return callback(null, chunk);
+      //       } else if (chunk instanceof MonitorResponse) {
+      //         const error = chunk.getError();
+      //         if (error) {
+      //           return callback(new Error(error));
+      //         }
+      //         const success = chunk.getSuccess();
+      //         if (success) {
+      //           fireDidStart();
+      //           return callback();
+      //         }
+      //         const data = chunk.getRxData();
+      //         return callback(null, data);
+      //       }
+      //     },
+      //   })
+      // );
+      // this._duplex.on('close', () => this.stop());
+      // duplex.write(request);
+      // // this._duplex.pipe(process.stdout);
+      // this._duplex.on('drain', () => {
+      //   console.log('drain');
+      // });
+      // this._duplex.on('pause', () => {
+      //   console.log('pause');
+      // });
+      // this._duplex.on('finish', () => {
+      //   console.log('finish');
+      // });
+      // this._duplex.on('readable', () => {
+      //   console.log('readable');
+      // });
+      // this._duplex.on('resume', () => {
+      //   console.log('resume');
+      // });
+    });
   }
 
   stop(): void {
@@ -336,7 +363,9 @@ class MonitorImpl implements Disposable {
     return this.onWillStopEmitter.event;
   }
 
-  get duplex(): Transform | undefined {
+  get duplex():
+    | ClientDuplexStream<MonitorRequest, MonitorResponse>
+    | undefined {
     return this._duplex;
   }
 
@@ -360,13 +389,8 @@ class MonitorImpl implements Disposable {
     }
     const duplex = this._duplex;
     if (typeof message === 'string') {
-      await new Promise<void>((resolve, reject) => {
-        duplex.write(new MonitorRequest().setTxData(message), (err) => {
-          if (err) {
-            reject(err);
-          }
-          resolve();
-        });
+      await new Promise<void>((resolve) => {
+        duplex.write(new MonitorRequest().setTxData(message), resolve);
       });
     } else {
       // TODO
@@ -397,8 +421,13 @@ class MonitorImpl implements Disposable {
       case 'stopping': {
         return fail(this._status, s);
       }
-      default:
-        throw new Error(`Unexpected status: ${status}`);
+      case undefined: {
+        if (s === 'starting') {
+          this._status = s;
+          break;
+        }
+        return fail(this._status, s);
+      }
     }
     if (this._status === 'started') {
       this.onDidStartEmitter.fire();

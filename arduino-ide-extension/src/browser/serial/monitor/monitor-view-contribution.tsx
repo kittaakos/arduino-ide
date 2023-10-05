@@ -229,12 +229,13 @@ export class MonitorViewContribution
               fetch(url).then(async (resp) => {
                 const reader = resp.body?.getReader();
                 if (reader) {
+                  const decoder = new TextDecoder();
                   while (true) {
                     const { done, value } = await reader.read();
                     if (done) {
                       return;
                     }
-                    console.log(value);
+                    console.log(decoder.decode(value, { stream: true }));
                   }
                 }
               });
