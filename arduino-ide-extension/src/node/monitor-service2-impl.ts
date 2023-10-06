@@ -4,19 +4,21 @@ import {
   DisposableCollection,
 } from '@theia/core/lib/common/disposable';
 import { Emitter, Event } from '@theia/core/lib/common/event';
+import { ILogger } from '@theia/core/lib/common/logger';
 import { nls } from '@theia/core/lib/common/nls';
 import { Deferred, retry } from '@theia/core/lib/common/promise-util';
 import type { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
-import { injectable } from '@theia/core/shared/inversify';
+import { inject, injectable } from '@theia/core/shared/inversify';
 import type { Application, Request, Response } from 'express';
 import { Transform } from 'node:stream';
 import {
+  assertValidMonitorStateTransition,
   isMonitorID,
   MonitorID2,
   MonitorMessage2,
   MonitorService2,
   MonitorSettings2,
-  MonitorStatus2,
+  MonitorState2,
   parseMonitorID,
 } from '../common/protocol/monitor-service2';
 import { waitForEvent } from '../common/utils';
@@ -33,6 +35,8 @@ export class MonitorService2Impl
   extends CoreClientAware
   implements MonitorService2, BackendApplicationContribution
 {
+  @inject(ILogger)
+  private readonly logger: ILogger;
   private readonly monitors = new Map<MonitorID2, MonitorImpl>();
 
   configure(app: Application): void {
@@ -42,20 +46,31 @@ export class MonitorService2Impl
     app.delete('/monitor', this.handleStop);
     // HTTP GET (stream monitor data)
     app.get('/monitor', this.handleStream);
-    // HTTP GET (status)
-    app.get('/monitor/status', this.handleStatus);
+    // HTTP GET (state)
+    app.get('/monitor/state', this.handleState);
     // HTTP POST (send message or command)
     app.post('/monitor', this.handleSend);
   }
 
   async start(id: MonitorID2): Promise<void> {
+    this.logger.debug(`start monitor: ${id}`);
     const { client, instance } = await this.coreClient;
     let monitor = this.monitors.get(id);
     if (!monitor) {
+      this.logger.debug(`creating monitor: ${id}`);
+      const { port, fqbn } = parseMonitorID(id);
+      const toDisposeOnWillClose = new DisposableCollection();
       const create = () => this.createMonitor(client);
       monitor = new MonitorImpl(create);
+      toDisposeOnWillClose.pushAll([
+        monitor.onWillStop(() => toDisposeOnWillClose.dispose()),
+        Disposable.create(() => {
+          this.logger.debug(`deleting monitor: ${id}`);
+          this.monitors.delete(id);
+        }),
+      ]);
       this.monitors.set(id, monitor);
-      const { port, fqbn } = parseMonitorID(id);
+      this.logger.debug(`starting monitor: ${id}`);
       monitor.start(
         new MonitorRequest()
           .setPort(
@@ -65,8 +80,13 @@ export class MonitorService2Impl
           .setInstance(instance)
       );
     }
-    switch (monitor.status) {
-      case 'starting': // fallback. The 'starting' monitor will start only when the data is pulled by the stream request
+    switch (monitor.state) {
+      case 'created': // fallthrough
+      case 'starting': {
+        this.logger.debug(`waiting for monitor to start: ${id}`);
+        await waitForEvent(monitor.onDidStart);
+        return;
+      }
       case 'started': {
         return;
       }
@@ -99,9 +119,9 @@ export class MonitorService2Impl
     await monitor.send(message);
   }
 
-  async status(id: MonitorID2): Promise<MonitorStatus2> {
+  async status(id: MonitorID2): Promise<MonitorState2 | undefined> {
     const monitor = this.monitors.get(id);
-    return monitor?.status;
+    return monitor?.state;
   }
 
   private async duplex(
@@ -111,10 +131,10 @@ export class MonitorService2Impl
     if (!monitor) {
       throw new Error(`Monitor not found: ${id}`); // TODO: make it `ApplicationError`
     }
-    if (monitor.status === 'stopping') {
+    if (monitor.state === 'stopping') {
       throw new Error(`Conflict. Monitor is stopping: ${id}`);
     }
-    if (monitor.status === 'starting') {
+    if (monitor.state === 'starting') {
       await waitForEvent(monitor.onDidStart);
     }
     const source = monitor.duplex;
@@ -176,7 +196,7 @@ export class MonitorService2Impl
     this.handle(req, resp, (id) => this.stop(id));
   };
 
-  private readonly handleStatus = async (
+  private readonly handleState = async (
     req: Request,
     resp: Response
   ): Promise<void> => {
@@ -255,14 +275,14 @@ export class MonitorService2Impl
   }
 }
 
-class MonitorImpl implements Disposable {
+class MonitorImpl {
   private readonly toDispose: DisposableCollection;
   private readonly onDidStartEmitter: Emitter<void>;
   private readonly onWillStopEmitter: Emitter<void>;
   private _duplex:
     | ClientDuplexStream<MonitorRequest, MonitorResponse>
     | undefined;
-  private _status: MonitorStatus2;
+  private _state: MonitorState2;
 
   constructor(
     private readonly create: () => Promise<
@@ -273,8 +293,10 @@ class MonitorImpl implements Disposable {
     this.onWillStopEmitter = new Emitter();
     this.toDispose = new DisposableCollection(
       this.onDidStartEmitter,
-      this.onWillStopEmitter
+      this.onWillStopEmitter,
+      Disposable.create(() => (this._state = 'stopped'))
     );
+    this._state = 'created';
   }
 
   start(request: MonitorRequest): void {
@@ -285,74 +307,26 @@ class MonitorImpl implements Disposable {
         Disposable.create(() => duplex.destroy()),
         Disposable.create(() => (this._duplex = undefined)),
       ]);
-      // readable streams are in paused mode until `data` listener is attached or the stream is piped.
-      // however, when data is available to be read, the `'readable'` event will fire.
       duplex.on('end', () => this.stop());
-      const ready = new Deferred();
-      const dataHandler = (response: MonitorResponse) => {
-        if (response.getError()) {
-          duplex.removeListener('data', dataHandler);
-          ready.reject(new Error(response.getError()));
-          return;
-        }
-        if (response.getSuccess()) {
-          duplex.removeListener('data', dataHandler);
-          ready.resolve();
-          return;
-        }
-      };
+      const monitorStarted = new MonitorStarted();
+      const { ready, dataHandler } = monitorStarted;
       duplex.on('data', dataHandler);
       duplex.write(request);
-      await ready.promise;
+      try {
+        await ready;
+      } finally {
+        // Always remove the data handler to force the readstream to go into paused mode
+        // The readstream will automatically resume, when it's piped into the HTTP request
+        duplex.removeListener('data', dataHandler);
+      }
       this._duplex = duplex;
       this.changeState('started');
-
-      // this._duplex = duplex.pipe(
-      //   new Transform({
-      //     objectMode: false,
-      //     transform(chunk: MonitorResponse | MonitorRequest, _, callback) {
-      //       if (chunk instanceof Buffer) {
-      //         return callback(null, chunk);
-      //       } else if (chunk instanceof MonitorResponse) {
-      //         const error = chunk.getError();
-      //         if (error) {
-      //           return callback(new Error(error));
-      //         }
-      //         const success = chunk.getSuccess();
-      //         if (success) {
-      //           fireDidStart();
-      //           return callback();
-      //         }
-      //         const data = chunk.getRxData();
-      //         return callback(null, data);
-      //       }
-      //     },
-      //   })
-      // );
-      // this._duplex.on('close', () => this.stop());
-      // duplex.write(request);
-      // // this._duplex.pipe(process.stdout);
-      // this._duplex.on('drain', () => {
-      //   console.log('drain');
-      // });
-      // this._duplex.on('pause', () => {
-      //   console.log('pause');
-      // });
-      // this._duplex.on('finish', () => {
-      //   console.log('finish');
-      // });
-      // this._duplex.on('readable', () => {
-      //   console.log('readable');
-      // });
-      // this._duplex.on('resume', () => {
-      //   console.log('resume');
-      // });
     });
   }
 
   stop(): void {
     this.changeState('stopping');
-    this.dispose();
+    this.toDispose.dispose();
   }
 
   get onDidStart(): Event<void> {
@@ -369,18 +343,8 @@ class MonitorImpl implements Disposable {
     return this._duplex;
   }
 
-  get status(): Exclude<MonitorStatus2, undefined> {
-    if (this._duplex) {
-      return 'started';
-    }
-    if (this.toDispose.disposed) {
-      return 'stopping';
-    }
-    return 'starting';
-  }
-
-  dispose(): void {
-    this.toDispose.dispose();
+  get state(): MonitorState2 {
+    return this._state;
   }
 
   async send(message: MonitorMessage2): Promise<void> {
@@ -397,42 +361,50 @@ class MonitorImpl implements Disposable {
     }
   }
 
-  private changeState(s: MonitorStatus2): void {
-    const fail = (from: MonitorStatus2, to: MonitorStatus2): never => {
-      throw new Error(
-        `Illegal monitor state transition from '${from}' to '${to}'`
-      );
-    };
-    switch (this._status) {
-      case 'starting': {
-        if (s === 'stopping' || s === 'started') {
-          this._status = s;
-          break;
-        }
-        return fail(this._status, s);
-      }
+  private changeState(s: MonitorState2): void {
+    assertValidMonitorStateTransition(this._state, s);
+    this._state = s;
+    switch (this._state) {
       case 'started': {
-        if (s === 'stopping') {
-          this._status = s;
-          break;
-        }
-        return fail(this._status, s);
+        this.onDidStartEmitter.fire();
+        return;
       }
       case 'stopping': {
-        return fail(this._status, s);
-      }
-      case undefined: {
-        if (s === 'starting') {
-          this._status = s;
-          break;
-        }
-        return fail(this._status, s);
+        this.onWillStopEmitter.fire();
+        return;
       }
     }
-    if (this._status === 'started') {
-      this.onDidStartEmitter.fire();
-    } else if (this.status === 'stopping') {
-      this.onWillStopEmitter.fire();
+  }
+}
+
+class MonitorStarted {
+  private readonly deferred = new Deferred();
+  private readonly handler = (resp: MonitorResponse) => {
+    const error = resp.getError();
+    const success = resp.getSuccess();
+    if (error) {
+      this.deferred.reject(new Error(error));
+    } else if (success) {
+      this.deferred.resolve();
+    } else {
+      // According to the CLI monitor protocol, the first message must be either `success` or `error`
+      // Hitting this branch is an implementation error either in IDE2 or on the CLI side.
+      const object = resp.toObject(false);
+      this.deferred.reject(
+        new Error(
+          `Unexpected monitor response. Expected either 'success' or 'error' as the first response after establishing the monitor connection. Got: ${JSON.stringify(
+            object
+          )}`
+        )
+      );
     }
+  };
+
+  get dataHandler(): (resp: MonitorResponse) => void {
+    return this.handler;
+  }
+
+  get ready(): Promise<void> {
+    return this.deferred.promise;
   }
 }

@@ -54,8 +54,27 @@ export function parseMonitorID(id: MonitorID2): {
 export type MonitorSettings2 = Record<string, string>; // TODO
 export type MonitorMessage2 = string | MonitorSettings2;
 
-const monitorStatusLiterals = ['starting', 'started', 'stopping'] as const;
-export type MonitorStatus2 = (typeof monitorStatusLiterals)[number] | undefined;
+const monitorStateLiterals = [
+  'created',
+  'starting',
+  'started',
+  'stopping',
+  'stopped',
+] as const;
+export type MonitorState2 = (typeof monitorStateLiterals)[number];
+
+export function assertValidMonitorStateTransition(
+  current: MonitorState2,
+  next: MonitorState2
+): void {
+  const currentIndex = monitorStateLiterals.indexOf(current);
+  const nextIndex = monitorStateLiterals.indexOf(next);
+  if (currentIndex + 1 !== nextIndex) {
+    throw new Error(
+      `Invalid monitor state transition. Cannot advance from '${current}' to '${next}'.`
+    );
+  }
+}
 
 export const MonitorService2Path = '/services/monitor-service-2';
 export const MonitorService2 = Symbol('MonitorService2');
@@ -63,5 +82,5 @@ export interface MonitorService2 {
   start(id: MonitorID2): Promise<void>;
   stop(id: MonitorID2): Promise<void>;
   send(id: MonitorID2, message: MonitorMessage2): Promise<void>;
-  status(id: MonitorID2): Promise<MonitorStatus2>;
+  status(id: MonitorID2): Promise<MonitorState2 | undefined>;
 }
