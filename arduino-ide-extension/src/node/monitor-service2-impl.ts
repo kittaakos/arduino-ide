@@ -132,14 +132,14 @@ export class MonitorService2Impl
       throw new Error(`Monitor not found: ${id}`); // TODO: make it `ApplicationError`
     }
     if (monitor.state === 'stopping') {
-      throw new Error(`Conflict. Monitor is stopping: ${id}`);
+      throw new Error(`Conflict. Monitor is stopping: ${id}`); // TODO: make it `ApplicationError`
     }
     if (monitor.state === 'starting') {
       await waitForEvent(monitor.onDidStart);
     }
     const source = monitor.duplex;
     if (!source) {
-      throw new Error(`Stream not found: ${id}`);
+      throw new Error(`Stream not found: ${id}`); // TODO: make it `ApplicationError`
     }
     return source;
   }
@@ -220,6 +220,8 @@ export class MonitorService2Impl
     const id = this.resolveQuery(req, resp);
     if (id) {
       try {
+        // a stream request automatically starts the monitor
+        await this.start(id);
         const duplex = await this.duplex(id);
         duplex
           .pipe(

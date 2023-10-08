@@ -1,17 +1,16 @@
+import { Endpoint } from '@theia/core/lib/browser/endpoint';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
-import {
-  BaseWidget,
-  Message,
-  MessageLoop,
-  Widget,
-} from '@theia/core/lib/browser/widgets';
-import { nls } from '@theia/core/lib/common';
+import { BaseWidget } from '@theia/core/lib/browser/widgets';
 import {
   Disposable,
   DisposableCollection,
 } from '@theia/core/lib/common/disposable';
 import { Emitter } from '@theia/core/lib/common/event';
+import { nls } from '@theia/core/lib/common/nls';
 import { Deferred } from '@theia/core/lib/common/promise-util';
+import type { MaybePromise } from '@theia/core/lib/common/types';
+import { Message, MessageLoop } from '@theia/core/shared/@phosphor/messaging';
+import { Widget } from '@theia/core/shared/@phosphor/widgets';
 import {
   inject,
   injectable,
@@ -23,15 +22,25 @@ import type { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-w
 import { TerminalFrontendContribution } from '@theia/terminal/lib/browser/terminal-frontend-contribution';
 import { TerminalWidgetImpl } from '@theia/terminal/lib/browser/terminal-widget-impl';
 import { serialMonitorWidgetLabel } from '../../../common/nls';
+import { MonitorEOL, MonitorSettings } from '../../../common/protocol';
 import {
-  MonitorEOL,
-  MonitorManagerProxyClient,
-  MonitorSettings,
-} from '../../../common/protocol';
+  BoardList,
+  getInferredBoardOrBoard,
+} from '../../../common/protocol/board-list';
+import {
+  createMonitorID,
+  MonitorID2,
+  MonitorService2,
+} from '../../../common/protocol/monitor-service2';
+import { joinUint8Arrays } from '../../../common/utils';
 import { BoardsServiceProvider } from '../../boards/boards-service-provider';
 import { MonitorModel } from '../../monitor-model';
 import { ArduinoSelect, SelectOption } from '../../widgets/arduino-select';
 import { SerialMonitorSendInput } from './serial-monitor-send-input';
+
+// https://github.com/arduino/arduino-ide/blob/57975f8d91c7158becdbf3a74d0713a50aa577ca/arduino-ide-extension/src/node/monitor-service.ts#L708
+// In milliseconds. 16ms was to support ~60Hz.
+// const updateInterval = 32;
 
 @injectable()
 export class MonitorWidget extends BaseWidget {
@@ -54,8 +63,8 @@ export class MonitorWidget extends BaseWidget {
 
   @inject(MonitorModel)
   private readonly monitorModel: MonitorModel;
-  @inject(MonitorManagerProxyClient)
-  private readonly monitorManagerProxy: MonitorManagerProxyClient;
+  @inject(MonitorService2)
+  private readonly monitorService: MonitorService2;
   @inject(BoardsServiceProvider)
   private readonly boardsServiceProvider: BoardsServiceProvider;
   @inject(FrontendApplicationStateService)
@@ -67,6 +76,7 @@ export class MonitorWidget extends BaseWidget {
   private readonly contentNode: HTMLDivElement;
   private readonly headerRoot: Root;
   private readonly headerRef = React.createRef<HTMLDivElement>();
+  private _monitorClient: MonitorClient;
   private _terminalWidget: TerminalWidgetImpl | undefined;
   private _deferredTerminal: Deferred<TerminalWidgetImpl> = new Deferred();
 
@@ -93,6 +103,10 @@ export class MonitorWidget extends BaseWidget {
   @postConstruct()
   protected init(): void {
     this.toDisposeOnReset.dispose();
+    this._monitorClient = new MonitorClient(
+      this.monitorService,
+      this.boardsServiceProvider
+    );
     this._deferredTerminal = new Deferred();
     this.terminalContribution
       .newTerminal({
@@ -103,20 +117,33 @@ export class MonitorWidget extends BaseWidget {
         this._deferredTerminal?.resolve(widget as TerminalWidgetImpl);
       });
     this.toDisposeOnReset.pushAll([
-      Disposable.create(() => this.monitorManagerProxy.disconnect()),
+      Disposable.create(() => this._monitorClient.dispose()),
       this.monitorModel.onChange(() => this.update()),
-      this.monitorManagerProxy.onMonitorSettingsDidChange((event) =>
-        this.updateSettings(event)
-      ),
-      this.monitorManagerProxy.onMessagesReceived(({ messages }) => {
-        this._terminalWidget?.getTerminal().write(messages);
-      }),
+      // this.monitorManagerProxy.onMonitorSettingsDidChange((event) =>
+      //   this.updateSettings(event)
+      // ),
       Disposable.create(() => {
         this._terminalWidget?.dispose();
         this._terminalWidget = undefined;
       }),
     ]);
-    this.startMonitor();
+    Promise.all([
+      this.appStateService.reachedState('ready'),
+      this.boardsServiceProvider.ready,
+    ]).then(() => {
+      let start = Date.now();
+      let chunks: Uint8Array[] = [];
+      this._monitorClient.activate((chunk) => {
+        const now = Date.now();
+        chunks.push(chunk);
+        if (now - start >= 32) {
+          const data = joinUint8Arrays(chunks);
+          chunks = [];
+          start = now;
+          this._terminalWidget?.getTerminal().write(data);
+        }
+      });
+    });
   }
 
   reset(): void {
@@ -236,13 +263,13 @@ export class MonitorWidget extends BaseWidget {
     ];
   }
 
-  private async startMonitor(): Promise<void> {
-    await this.appStateService.reachedState('ready');
-    await this.syncSettings();
-    await this.monitorManagerProxy.startMonitor();
-  }
+  // private async startMonitor(): Promise<void> {
+  //   await this.appStateService.reachedState('ready');
+  //   await this.syncSettings();
+  //   this._monitorClient.activate();
+  // }
 
-  private async syncSettings(): Promise<void> {
+  /*TODO*/ protected async syncSettings(): Promise<void> {
     const settings = await this.getCurrentSettings();
     this.updateSettings(settings);
   }
@@ -253,7 +280,8 @@ export class MonitorWidget extends BaseWidget {
     if (!board || !port) {
       return this.settings || {};
     }
-    return this.monitorManagerProxy.getCurrentSettings(board, port);
+    // return this.monitorManagerProxy.getCurrentSettings(board, port);
+    return {};
   }
 
   private renderHeader(): React.ReactNode {
@@ -310,7 +338,7 @@ export class MonitorWidget extends BaseWidget {
 
   protected readonly onSend = (value: string): void => this.doSend(value);
   protected doSend(value: string): void {
-    this.monitorManagerProxy.send(value);
+    this._monitorClient.send(value);
   }
 
   protected readonly onChangeLineEnding = (
@@ -329,7 +357,130 @@ export class MonitorWidget extends BaseWidget {
         return;
       const baudRateSettings = pluggableMonitorSettings['baudrate'];
       baudRateSettings.selectedValue = value;
-      this.monitorManagerProxy.changeSettings({ pluggableMonitorSettings });
+      // this.monitorManagerProxy.changeSettings({ pluggableMonitorSettings }); TODO!
     });
   };
+}
+
+const monitorEndpoint = new Endpoint({ path: '/monitor' }).getRestUrl();
+
+export type MonitorDataHandler = (chunk: Uint8Array) => MaybePromise<void>;
+
+export class MonitorClient implements Disposable {
+  private readonly toDispose = new DisposableCollection();
+  private readonly handlers = new Set<MonitorDataHandler>();
+  private _stream: Disposable | undefined;
+
+  constructor(
+    private readonly monitorService: MonitorService2,
+    private readonly boardServiceProvider: BoardsServiceProvider
+  ) {
+    this.toDispose.pushAll([
+      boardServiceProvider.onBoardListDidChange(() => this.maybeUpdateStream()),
+      Disposable.create(() => this._stream?.dispose()),
+    ]);
+  }
+
+  dispose(): void {
+    this.toDispose.dispose();
+  }
+
+  activate(handler: MonitorDataHandler): Disposable {
+    if (this.handlers.has(handler)) {
+      return Disposable.NULL;
+    }
+    if (!this.handlers.size) {
+      setTimeout(() => this.maybeUpdateStream(), 0);
+    }
+    this.handlers.add(handler);
+    const disposeHandler = Disposable.create(() =>
+      this.handlers.delete(handler)
+    );
+    this.toDispose.push(disposeHandler);
+    return disposeHandler;
+  }
+
+  send(message: string): Promise<void> {
+    const id = this.createMonitorID();
+    if (!id) {
+      throw new Error('Not connected');
+    }
+    return this.monitorService.send(id, message);
+  }
+
+  private maybeUpdateStream(
+    boardList: BoardList = this.boardServiceProvider.boardList
+  ): void {
+    this._stream?.dispose();
+    const id = this.createMonitorID(boardList);
+    if (id) {
+      this._stream = this.stream(id);
+    }
+  }
+
+  private createMonitorID(
+    boardList: BoardList = this.boardServiceProvider.boardList
+  ): MonitorID2 | undefined {
+    const { selectedIndex } = boardList;
+    const selectedItem = boardList.items[selectedIndex];
+    if (!selectedItem) {
+      return undefined;
+    }
+    return createMonitorID({
+      port: selectedItem.port,
+      fqbn: getInferredBoardOrBoard(selectedItem)?.fqbn,
+    });
+  }
+
+  private stream(id: MonitorID2): Disposable {
+    const abortController = new AbortController();
+    const { signal } = abortController;
+    const url = monitorEndpoint.withQuery(id).toString();
+    const disposable = Disposable.create(() => abortController.abort());
+    fetch(new Request(url, { signal })).then((resp) => {
+      if (resp.body) {
+        const handlers = Array.from(this.handlers.values());
+        const reader = resp.body.getReader();
+        const writeable = new WritableStream({
+          async write(
+            data: Uint8Array,
+            controller: WritableStreamDefaultController
+          ): Promise<void> {
+            if (controller.signal.aborted) {
+              return;
+            }
+            handlers.map((handler) => handler(data));
+          },
+        });
+        const readable = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const readOne = async (): Promise<unknown> => {
+              const { value, done } = await reader.read();
+              if (done) {
+                disposable.dispose();
+                controller.close();
+                return;
+              }
+              controller.enqueue(value);
+              return readOne();
+            };
+            return readOne();
+          },
+          cancel() {
+            console.log('cancel');
+          },
+        });
+        readable.pipeTo(
+          new WritableStream({
+            async write(chunk) {
+              const writer = writeable.getWriter();
+              await writer.write(chunk);
+              writer.releaseLock();
+            },
+          })
+        );
+      }
+    });
+    return disposable;
+  }
 }

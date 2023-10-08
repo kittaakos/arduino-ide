@@ -12,7 +12,7 @@
       "cwd": "${workspaceFolder}/electron-app",
       "args": [
         ".",
-        "--log-level=info",
+        "--log-level=debug",
         "--hostname=localhost",
         "--app-project-path=${workspaceFolder}/electron-app",
         "--remote-debugging-port=9222",

@@ -8,10 +8,12 @@ import {
 
 export type MonitorID2 = string;
 
-export function createMonitorID(params: {
-  port: PortIdentifier;
-  fqbn?: string | undefined;
-}): MonitorID2 {
+export interface CreateMonitorIDParams {
+  readonly port: PortIdentifier;
+  readonly fqbn?: string | undefined;
+}
+
+export function createMonitorID(params: CreateMonitorIDParams): MonitorID2 {
   const { port, fqbn } = params;
   const { protocol, address } = port;
   return queryString.stringify(
@@ -67,6 +69,10 @@ export function assertValidMonitorStateTransition(
   current: MonitorState2,
   next: MonitorState2
 ): void {
+  // exceptional case: can go form starting to stopping
+  if (current === 'starting' && next === 'stopping') {
+    return;
+  }
   const currentIndex = monitorStateLiterals.indexOf(current);
   const nextIndex = monitorStateLiterals.indexOf(next);
   if (currentIndex + 1 !== nextIndex) {

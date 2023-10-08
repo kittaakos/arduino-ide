@@ -361,6 +361,10 @@ import { TerminalFrontendContribution as TheiaTerminalFrontendContribution } fro
 import { SelectionService } from '@theia/core/lib/common/selection-service';
 import { CommandService } from '@theia/core/lib/common/command';
 import { CorePreferences } from '@theia/core/lib/browser/core-preferences';
+import {
+  MonitorService2,
+  MonitorService2Path,
+} from '../common/protocol/monitor-service2';
 
 // Hack to fix copy/cut/paste issue after electron version update in Theia.
 // https://github.com/eclipse-theia/theia/issues/12487
@@ -529,6 +533,12 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   // notifications from the backend
   bind(MonitorManagerProxyClient)
     .to(MonitorManagerProxyClientImpl)
+    .inSingletonScope();
+
+  bind(MonitorService2)
+    .toDynamicValue(({ container }) =>
+      WebSocketConnectionProvider.createProxy(container, MonitorService2Path)
+    )
     .inSingletonScope();
 
   bind(WorkspaceService).toSelf().inSingletonScope();
