@@ -133,14 +133,18 @@ export class MonitorWidget extends BaseWidget {
     ]).then(() => {
       let start = Date.now();
       let chunks: Uint8Array[] = [];
-      this._monitorClient.activate((chunk) => {
+      this._monitorClient.activate(async (chunk) => {
+        // console.log('chunk size', chunk.length);
         const now = Date.now();
         chunks.push(chunk);
         if (now - start >= 32) {
           const data = joinUint8Arrays(chunks);
           chunks = [];
           start = now;
-          this._terminalWidget?.getTerminal().write(data);
+          // console.log('before flush chunk size', data.length);
+          await new Promise<void>((resolve) =>
+            this._terminalWidget?.getTerminal().write(data, resolve)
+          );
         }
       });
     });
@@ -437,50 +441,43 @@ export class MonitorClient implements Disposable {
     const { signal } = abortController;
     const url = monitorEndpoint.withQuery(id).toString();
     const disposable = Disposable.create(() => abortController.abort());
-    fetch(new Request(url, { signal })).then((resp) => {
-      if (resp.body) {
-        const handlers = Array.from(this.handlers.values());
-        const reader = resp.body.getReader();
-        const writeable = new WritableStream({
-          async write(
-            data: Uint8Array,
-            controller: WritableStreamDefaultController
-          ): Promise<void> {
-            if (controller.signal.aborted) {
-              return;
+    fetch(new Request(url, { signal }))
+      .then(async (resp) => {
+        if (resp.body) {
+          const handlers = Array.from(this.handlers.values());
+          const reader = resp.body.getReader();
+          let buffer: Uint8Array[] = [];
+          let start = Date.now();
+          const flushBuffer = async () => {
+            const data = joinUint8Arrays(buffer);
+            buffer = [];
+            if (data.length) {
+              await Promise.all(handlers.map((handler) => handler(data)));
             }
-            handlers.map((handler) => handler(data));
-          },
-        });
-        const readable = new ReadableStream<Uint8Array>({
-          start(controller) {
-            const readOne = async (): Promise<unknown> => {
+          };
+          try {
+            while (true) {
               const { value, done } = await reader.read();
               if (done) {
+                await flushBuffer();
                 disposable.dispose();
-                controller.close();
                 return;
               }
-              controller.enqueue(value);
-              return readOne();
-            };
-            return readOne();
-          },
-          cancel() {
-            console.log('cancel');
-          },
-        });
-        readable.pipeTo(
-          new WritableStream({
-            async write(chunk) {
-              const writer = writeable.getWriter();
-              await writer.write(chunk);
-              writer.releaseLock();
-            },
-          })
-        );
-      }
-    });
+              buffer.push(value);
+              const now = Date.now();
+              if (now - start >= 32) {
+                start = now;
+                await flushBuffer();
+              }
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        }
+      })
+      .catch((reason) => {
+        console.log('reason', reason);
+      });
     return disposable;
   }
 }

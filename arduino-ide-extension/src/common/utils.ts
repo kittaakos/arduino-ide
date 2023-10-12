@@ -44,6 +44,9 @@ export function stringToUint8Array(text: string): Uint8Array {
 }
 
 export function joinUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+  if (!arrays.length) {
+    return new Uint8Array();
+  }
   const length = arrays.reduce((acc, curr) => {
     acc += curr.length;
     return acc;
