@@ -1,13 +1,32 @@
-import { join } from 'node:path';
-import * as grpc from '@grpc/grpc-js';
+import type { ClientReadableStream } from '@grpc/grpc-js';
+import {
+  Disposable,
+  DisposableCollection,
+} from '@theia/core/lib/common/disposable';
+import { Emitter } from '@theia/core/lib/common/event';
+import { Deferred } from '@theia/core/lib/common/promise-util';
 import {
   inject,
   injectable,
   postConstruct,
 } from '@theia/core/shared/inversify';
-import { Emitter } from '@theia/core/lib/common/event';
+import { join } from 'node:path';
+import {
+  AdditionalUrls,
+  IndexType,
+  IndexUpdateDidCompleteParams,
+  IndexUpdateDidFailParams,
+  IndexUpdateSummary,
+  IndexUpdateWillStartParams,
+  NotificationServiceServer,
+} from '../common/protocol';
+import {
+  createChannelOptions,
+  createCoreArduinoClient,
+} from './arduino-core-service-client';
+import { ArduinoDaemonImpl } from './arduino-daemon-impl';
+import type { DefaultCliConfig } from './cli-config';
 import { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
-import { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
 import {
   CreateRequest,
   InitRequest,
@@ -17,31 +36,17 @@ import {
   UpdateLibrariesIndexRequest,
   UpdateLibrariesIndexResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/commands_pb';
-import * as commandsGrpcPb from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
-import {
-  IndexType,
-  IndexUpdateDidCompleteParams,
-  IndexUpdateSummary,
-  IndexUpdateDidFailParams,
-  IndexUpdateWillStartParams,
-  NotificationServiceServer,
-  AdditionalUrls,
-} from '../common/protocol';
-import { Deferred } from '@theia/core/lib/common/promise-util';
+import type { Instance } from './cli-protocol/cc/arduino/cli/commands/v1/common_pb';
 import {
   Status as RpcStatus,
   Status,
 } from './cli-protocol/google/rpc/status_pb';
 import { ConfigServiceImpl } from './config-service-impl';
-import { ArduinoDaemonImpl } from './arduino-daemon-impl';
-import { DisposableCollection } from '@theia/core/lib/common/disposable';
-import { Disposable } from '@theia/core/shared/vscode-languageserver-protocol';
 import {
-  IndexesUpdateProgressHandler,
-  ExecuteWithProgress,
   DownloadResult,
+  ExecuteWithProgress,
+  IndexesUpdateProgressHandler,
 } from './grpc-progressible';
-import type { DefaultCliConfig } from './cli-config';
 import { ServiceError } from './service-error';
 
 @injectable()
@@ -128,10 +133,9 @@ export class CoreClientProvider {
   /**
    * Encapsulates both the gRPC core client creation (`CreateRequest`) and initialization (`InitRequest`).
    */
-  private async create(port: string): Promise<CoreClientProvider.Client> {
+  private async create(port: number): Promise<CoreClientProvider.Client> {
     this.closeClient();
-    const address = this.address(port);
-    const client = await this.createClient(address);
+    const client = await this.createClient(port);
     this.toDisposeOnCloseClient.pushAll([
       Disposable.create(() => client.client.close()),
     ]);
@@ -195,22 +199,9 @@ export class CoreClientProvider {
     return this.toDisposeOnCloseClient.dispose();
   }
 
-  private async createClient(
-    address: string
-  ): Promise<CoreClientProvider.Client> {
-    // https://github.com/agreatfool/grpc_tools_node_protoc_ts/blob/master/doc/grpcjs_support.md#usage
-    const ArduinoCoreServiceClient = grpc.makeClientConstructor(
-      // @ts-expect-error: ignore
-      commandsGrpcPb['cc.arduino.cli.commands.v1.ArduinoCoreService'],
-      'ArduinoCoreServiceService'
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ) as any;
-    const client = new ArduinoCoreServiceClient(
-      address,
-      grpc.credentials.createInsecure(),
-      this.channelOptions
-    ) as ArduinoCoreServiceClient;
-
+  private async createClient(port: number): Promise<CoreClientProvider.Client> {
+    const channelOptions = createChannelOptions(this.version);
+    const client = createCoreArduinoClient(port, channelOptions);
     const instance = await new Promise<Instance>((resolve, reject) => {
       client.create(new CreateRequest(), (err, resp) => {
         if (err) {
@@ -361,7 +352,7 @@ export class CoreClientProvider {
   private async doUpdateIndex<
     R extends UpdateIndexResponse | UpdateLibrariesIndexResponse
   >(
-    responseProvider: () => grpc.ClientReadableStream<R>,
+    responseProvider: () => ClientReadableStream<R>,
     progressHandler?: IndexesUpdateProgressHandler,
     task?: string
   ): Promise<void> {
@@ -405,18 +396,6 @@ export class CoreClientProvider {
       onComplete: (params: IndexUpdateDidCompleteParams) =>
         this.notificationService.notifyIndexUpdateDidComplete(params),
     });
-  }
-
-  private address(port: string): string {
-    return `localhost:${port}`;
-  }
-
-  private get channelOptions(): Record<string, unknown> {
-    return {
-      'grpc.max_send_message_length': 512 * 1024 * 1024,
-      'grpc.max_receive_message_length': 512 * 1024 * 1024,
-      'grpc.primary_user_agent': `arduino-ide/${this.version}`,
-    };
   }
 
   private _version: string | undefined;
