@@ -223,15 +223,16 @@ export class MonitorService2Impl
         // a stream request automatically starts the monitor
         await this.start(id);
         const duplex = await this.duplex(id);
+        // const buffer: Uint8Array[] = [];
         duplex
           .pipe(
             new Transform({
               readableObjectMode: false,
               writableObjectMode: true,
-              transform(chunk, _, callback) {
+              transform(chunk, _, cb) {
                 if (chunk instanceof MonitorResponse) {
                   const data = chunk.getRxData_asU8();
-                  callback(null, data);
+                  cb(null, data);
                 }
               },
             })
@@ -310,17 +311,33 @@ class MonitorImpl {
         Disposable.create(() => (this._duplex = undefined)),
       ]);
       duplex.on('end', () => this.stop());
-      const monitorStarted = new MonitorStarted();
-      const { ready, dataHandler } = monitorStarted;
-      duplex.on('data', dataHandler);
+      const started = new Deferred<void>();
+      const handler = () => {
+        const resp = duplex.read(); // must read the content manually in paused mode
+        const error = resp.getError();
+        const success = resp.getSuccess();
+        if (error) {
+          started.reject(new Error(error));
+        } else if (success) {
+          started.resolve();
+        } else {
+          // According to the CLI monitor protocol, the first message must be either `success` or `error`
+          // Hitting this branch is an implementation error either in IDE2 or on the CLI side.
+          const object = resp.toObject(false);
+          started.reject(
+            new Error(
+              `Unexpected monitor response. Expected either 'success' or 'error' as the first response after establishing the monitor connection. Got: ${JSON.stringify(
+                object
+              )}`
+            )
+          );
+        }
+      };
+      // unlike `'data'`, `'readable'` handler will put the stream to pause after the removal
+      // The readstream will automatically resume, when it's piped into the HTTP request
+      duplex.once('readable', handler); // Do it `once` to not put back the stream to "readable" state
       duplex.write(request);
-      try {
-        await ready;
-      } finally {
-        // Always remove the data handler to force the readstream to go into paused mode
-        // The readstream will automatically resume, when it's piped into the HTTP request
-        duplex.removeListener('data', dataHandler);
-      }
+      await started.promise;
       this._duplex = duplex;
       this.changeState('started');
     });
@@ -376,37 +393,5 @@ class MonitorImpl {
         return;
       }
     }
-  }
-}
-
-class MonitorStarted {
-  private readonly deferred = new Deferred();
-  private readonly handler = (resp: MonitorResponse) => {
-    const error = resp.getError();
-    const success = resp.getSuccess();
-    if (error) {
-      this.deferred.reject(new Error(error));
-    } else if (success) {
-      this.deferred.resolve();
-    } else {
-      // According to the CLI monitor protocol, the first message must be either `success` or `error`
-      // Hitting this branch is an implementation error either in IDE2 or on the CLI side.
-      const object = resp.toObject(false);
-      this.deferred.reject(
-        new Error(
-          `Unexpected monitor response. Expected either 'success' or 'error' as the first response after establishing the monitor connection. Got: ${JSON.stringify(
-            object
-          )}`
-        )
-      );
-    }
-  };
-
-  get dataHandler(): (resp: MonitorResponse) => void {
-    return this.handler;
-  }
-
-  get ready(): Promise<void> {
-    return this.deferred.promise;
   }
 }
