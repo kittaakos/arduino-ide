@@ -21,7 +21,7 @@ import {
   MonitorState2,
   parseMonitorID,
 } from '../common/protocol/monitor-service2';
-import { waitForEvent } from '../common/utils';
+import { joinUint8Arrays, waitForEvent } from '../common/utils';
 import type { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
 import {
   MonitorRequest,
@@ -223,16 +223,28 @@ export class MonitorService2Impl
         // a stream request automatically starts the monitor
         await this.start(id);
         const duplex = await this.duplex(id);
-        // const buffer: Uint8Array[] = [];
+        let start = Date.now();
+        let buffer: Uint8Array[] = [];
         duplex
           .pipe(
             new Transform({
               readableObjectMode: false,
+              readableHighWaterMark: 1024, // bytes
               writableObjectMode: true,
+              writableHighWaterMark: 32, // objects
               transform(chunk, _, cb) {
                 if (chunk instanceof MonitorResponse) {
                   const data = chunk.getRxData_asU8();
-                  cb(null, data);
+                  buffer.push(data);
+                  const now = Date.now();
+                  if (now - start >= 32) {
+                    const toSend = joinUint8Arrays(buffer);
+                    buffer = [];
+                    start = now;
+                    return cb(null, toSend);
+                  } else {
+                    return cb();
+                  }
                 }
               },
             })
