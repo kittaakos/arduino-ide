@@ -1,4 +1,4 @@
-import type { ClientDuplexStream } from '@grpc/grpc-js';
+import { environment } from '@theia/application-package/lib/environment';
 import {
   Disposable,
   DisposableCollection,
@@ -6,10 +6,13 @@ import {
 import { Emitter, Event } from '@theia/core/lib/common/event';
 import { ILogger } from '@theia/core/lib/common/logger';
 import { nls } from '@theia/core/lib/common/nls';
-import { Deferred, retry } from '@theia/core/lib/common/promise-util';
+import { Deferred } from '@theia/core/lib/common/promise-util';
 import type { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
+import { UUID } from '@theia/core/shared/@phosphor/coreutils';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import type { Application, Request, Response } from 'express';
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import path from 'node:path';
 import { Transform } from 'node:stream';
 import {
   assertValidMonitorStateTransition,
@@ -22,13 +25,14 @@ import {
   parseMonitorID,
 } from '../common/protocol/monitor-service2';
 import { joinUint8Arrays, waitForEvent } from '../common/utils';
-import type { ArduinoCoreServiceClient } from './cli-protocol/cc/arduino/cli/commands/v1/commands_grpc_pb';
+import { ArduinoDaemonImpl } from './arduino-daemon-impl';
 import {
   MonitorRequest,
   MonitorResponse,
 } from './cli-protocol/cc/arduino/cli/commands/v1/monitor_pb';
 import { Port } from './cli-protocol/cc/arduino/cli/commands/v1/port_pb';
 import { CoreClientAware } from './core-client-provider';
+import { StartMonitorParams } from './monitor-process/index';
 
 @injectable()
 export class MonitorService2Impl
@@ -38,6 +42,15 @@ export class MonitorService2Impl
   @inject(ILogger)
   private readonly logger: ILogger;
   private readonly monitors = new Map<MonitorID2, MonitorImpl>();
+
+  @inject(ArduinoDaemonImpl)
+  private readonly daemon: ArduinoDaemonImpl;
+  private _daemonPort: number | undefined;
+
+  onStart(): void {
+    this.daemon.tryGetPort().then((port) => (this._daemonPort = port));
+    this.daemon.onDaemonStarted((port) => (this._daemonPort = port));
+  }
 
   configure(app: Application): void {
     // HTTP PUT (start)
@@ -54,14 +67,18 @@ export class MonitorService2Impl
 
   async start(id: MonitorID2): Promise<void> {
     this.logger.debug(`start monitor: ${id}`);
-    const { client, instance } = await this.coreClient;
+    if (typeof this._daemonPort !== 'number') {
+      throw new Error(
+        'Cannot start monitor connection. Arduino CLI daemon port is not set'
+      );
+    }
+    const { instance } = await this.coreClient;
     let monitor = this.monitors.get(id);
     if (!monitor) {
       this.logger.debug(`creating monitor: ${id}`);
       const { port, fqbn } = parseMonitorID(id);
       const toDisposeOnWillClose = new DisposableCollection();
-      const create = () => this.createMonitor(client);
-      monitor = new MonitorImpl(create);
+      monitor = new MonitorImpl();
       toDisposeOnWillClose.pushAll([
         monitor.onWillStop(() => toDisposeOnWillClose.dispose()),
         Disposable.create(() => {
@@ -77,7 +94,8 @@ export class MonitorService2Impl
             new Port().setAddress(port.address).setProtocol(port.protocol)
           )
           .setFqbn(fqbn ?? '')
-          .setInstance(instance)
+          .setInstance(instance),
+        this._daemonPort
       );
     }
     switch (monitor.state) {
@@ -124,9 +142,9 @@ export class MonitorService2Impl
     return monitor?.state;
   }
 
-  private async duplex(
+  private async process(
     id: MonitorID2
-  ): Promise<ClientDuplexStream<MonitorRequest, MonitorResponse>> {
+  ): Promise<ChildProcessWithoutNullStreams> {
     const monitor = this.monitors.get(id);
     if (!monitor) {
       throw new Error(`Monitor not found: ${id}`); // TODO: make it `ApplicationError`
@@ -137,49 +155,11 @@ export class MonitorService2Impl
     if (monitor.state === 'starting') {
       await waitForEvent(monitor.onDidStart);
     }
-    const source = monitor.duplex;
-    if (!source) {
-      throw new Error(`Stream not found: ${id}`); // TODO: make it `ApplicationError`
+    const process = monitor.process;
+    if (!process) {
+      throw new Error(`Monitor process not found: ${id}`); // TODO: make it `ApplicationError`
     }
-    return source;
-  }
-
-  private async createMonitor(
-    client: ArduinoCoreServiceClient
-  ): Promise<ClientDuplexStream<MonitorRequest, MonitorResponse>> {
-    const timeout = new Deferred<never>();
-    const timer = setTimeout(
-      () =>
-        timeout.reject(
-          new Error(
-            nls.localize(
-              'arduino/monitor/connectionTimeout',
-              "Timeout. The IDE has not received the 'success' message from the monitor after successfully connecting to it"
-            )
-          )
-        ),
-      20_000
-    );
-    return Promise.race([
-      retry(
-        async () => {
-          let duplex:
-            | ClientDuplexStream<MonitorRequest, MonitorResponse>
-            | undefined = undefined;
-          try {
-            duplex = client.monitor();
-            clearTimeout(timer);
-            return duplex;
-          } catch (err) {
-            duplex?.destroy();
-            throw err;
-          }
-        },
-        2_000,
-        20_000
-      ),
-      timeout.promise,
-    ]);
+    return process;
   }
 
   private readonly handleStart = async (
@@ -222,10 +202,10 @@ export class MonitorService2Impl
       try {
         // a stream request automatically starts the monitor
         await this.start(id);
-        const duplex = await this.duplex(id);
+        const process = await this.process(id);
         let start = Date.now();
         let buffer: Uint8Array[] = [];
-        duplex
+        process.stdout
           .pipe(
             new Transform({
               readableObjectMode: false,
@@ -294,16 +274,10 @@ class MonitorImpl {
   private readonly toDispose: DisposableCollection;
   private readonly onDidStartEmitter: Emitter<void>;
   private readonly onWillStopEmitter: Emitter<void>;
-  private _duplex:
-    | ClientDuplexStream<MonitorRequest, MonitorResponse>
-    | undefined;
+  private _process: ChildProcessWithoutNullStreams | undefined;
   private _state: MonitorState2;
 
-  constructor(
-    private readonly create: () => Promise<
-      ClientDuplexStream<MonitorRequest, MonitorResponse>
-    >
-  ) {
+  constructor() {
     this.onDidStartEmitter = new Emitter();
     this.onWillStopEmitter = new Emitter();
     this.toDispose = new DisposableCollection(
@@ -314,43 +288,16 @@ class MonitorImpl {
     this._state = 'created';
   }
 
-  start(request: MonitorRequest): void {
+  start(request: MonitorRequest, daemonPort: number): void {
     this.changeState('starting');
     process.nextTick(async () => {
-      const duplex = await this.create();
+      const process = await this.spawnMonitorProcess(request, daemonPort);
       this.toDispose.pushAll([
-        Disposable.create(() => duplex.destroy()),
-        Disposable.create(() => (this._duplex = undefined)),
+        Disposable.create(() => process.kill()),
+        Disposable.create(() => (this._process = undefined)),
       ]);
-      duplex.on('end', () => this.stop());
-      const started = new Deferred<void>();
-      const handler = () => {
-        const resp = duplex.read(); // must read the content manually in paused mode
-        const error = resp.getError();
-        const success = resp.getSuccess();
-        if (error) {
-          started.reject(new Error(error));
-        } else if (success) {
-          started.resolve();
-        } else {
-          // According to the CLI monitor protocol, the first message must be either `success` or `error`
-          // Hitting this branch is an implementation error either in IDE2 or on the CLI side.
-          const object = resp.toObject(false);
-          started.reject(
-            new Error(
-              `Unexpected monitor response. Expected either 'success' or 'error' as the first response after establishing the monitor connection. Got: ${JSON.stringify(
-                object
-              )}`
-            )
-          );
-        }
-      };
-      // unlike `'data'`, `'readable'` handler will put the stream to pause after the removal
-      // The readstream will automatically resume, when it's piped into the HTTP request
-      duplex.once('readable', handler); // Do it `once` to not put back the stream to "readable" state
-      duplex.write(request);
-      await started.promise;
-      this._duplex = duplex;
+      process.on('exit', () => this.stop());
+      this._process = process;
       this.changeState('started');
     });
   }
@@ -368,10 +315,8 @@ class MonitorImpl {
     return this.onWillStopEmitter.event;
   }
 
-  get duplex():
-    | ClientDuplexStream<MonitorRequest, MonitorResponse>
-    | undefined {
-    return this._duplex;
+  get process(): ChildProcessWithoutNullStreams | undefined {
+    return this._process;
   }
 
   get state(): MonitorState2 {
@@ -379,17 +324,107 @@ class MonitorImpl {
   }
 
   async send(message: MonitorMessage2): Promise<void> {
-    if (!this._duplex) {
-      throw new Error('Monitor not started');
+    if (!this._process) {
+      throw new Error('Monitor process is not running');
     }
-    const duplex = this._duplex;
+    const process = this._process;
     if (typeof message === 'string') {
-      await new Promise<void>((resolve) => {
-        duplex.write(new MonitorRequest().setTxData(message), resolve);
+      await new Promise<void>((resolve, reject) => {
+        process.stdin.write(
+          new MonitorRequest().setTxData(message).serializeBinary(),
+          (err) => (err ? reject(err) : resolve())
+        );
       });
     } else {
       // TODO
     }
+  }
+
+  private async spawnMonitorProcess(
+    request: MonitorRequest,
+    daemonPort: number
+  ): Promise<ChildProcessWithoutNullStreams> {
+    // TODO: this won't work. webpack the index module!
+    let startError: Error | undefined = undefined;
+    // /Users/a.kitta/dev/git/arduino-ide/arduino-ide-extension/lib/node/monitor-process/index.js
+    // /Users/a.kitta/dev/git/arduino-ide/arduino-ide-extension/lib/monitor-process/index.js
+    const module = path.join(__dirname, 'monitor-process', 'index.js');
+    for (let i = 0; i < 5; i++) {
+      const params: StartMonitorParams = {
+        daemonPort,
+        requestId: UUID.uuid4(),
+      };
+      const [node] = process.argv;
+      const env = environment.electron.runAsNodeEnv();
+      const cp = spawn(node, [module, '--params', JSON.stringify(params)], {
+        stdio: [null, null, null, 'pipe'],
+        env,
+      });
+      const didSpawn = new Deferred();
+      const didStart = new Deferred();
+      cp.once('spawn', () => {
+        didSpawn.resolve();
+        cp.stdin.write(request.serializeBinary());
+      });
+      cp.once('error', (err) => {
+        didSpawn.reject(err);
+        didStart.reject(err);
+      });
+      cp.once('exit', (code, signal) => {
+        let error: Error | undefined = undefined;
+        if (code !== null) {
+          error = new Error(`Unexpected exit with code: ${code}`);
+        }
+        if (!error && typeof signal !== null) {
+          error = new Error(`Unexpected exit with signal: ${signal}`);
+        }
+        if (!error) {
+          error = new Error('Unexpectedly exited.');
+        }
+        didSpawn.reject(error);
+        didStart.reject(error);
+      });
+      cp.stdout.once('readable', () => {
+        let chunk = cp.stdout.read();
+        if (chunk === params.requestId) {
+          didStart.resolve();
+        } else {
+          if (!chunk) {
+            chunk = cp.stderr.read();
+          }
+          didStart.reject(
+            new Error(
+              `Monitor process replied with an unexpected message: ${chunk}`
+            )
+          );
+        }
+      });
+      const timeout = new Deferred<never>();
+      const timer = setTimeout(
+        () =>
+          timeout.reject(
+            new Error(
+              nls.localize(
+                'arduino/monitor/connectionTimeout',
+                "Timeout. The IDE has not received the 'success' message from the monitor after successfully connecting to it"
+              )
+            )
+          ),
+        400_000
+      );
+      try {
+        await Promise.race([
+          Promise.all([didSpawn.promise, didStart.promise]).then(() =>
+            clearTimeout(timer)
+          ),
+          timeout.promise,
+        ]);
+        return cp;
+      } catch (err) {
+        startError = err;
+      }
+    }
+    throw startError;
   }
 
   private changeState(s: MonitorState2): void {
